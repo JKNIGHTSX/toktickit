@@ -18,4 +18,4 @@ datasource db {
 //   createdAt DateTime @default(now())
 // Then run:  npx prisma migrate dev --name init
 // TODO(Issue 3): add the Category model below.
-// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------    
