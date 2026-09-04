@@ -25,3 +25,19 @@ model Category {
   name      String   @unique
   createdAt DateTime @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// Lab 2 — Development Requester Model
+// ---------------------------------------------------------------------------
+model RequesterUser {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  name       String
+  department String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("requester_users")
+}

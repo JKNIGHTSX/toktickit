@@ -29,3 +29,30 @@ export async function checkSystem(): Promise<SystemStatus> {
   const categories: Category[] = await categoriesRes.json();
   return { online: true, categories };
 }
+
+// ---------------------------------------------------------------------------
+// Lab 2 — Issue 1: Fetch active Development Requesters
+// ---------------------------------------------------------------------------
+export interface Requester {
+  id: number;
+  name: string;
+  email: string;
+  department?: string | null;
+  isActive: boolean;
+}
+
+export async function fetchRequesters(): Promise<Requester[]> {
+  const res = await fetch(`${API_URL}/api/requesters`);
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch development requesters";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(errorMsg);
+  }
+  return res.json();
+}
+
