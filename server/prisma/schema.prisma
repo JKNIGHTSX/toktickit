@@ -11,33 +11,41 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Issue 3 — Create and seed IT request categories
-// Define a Category model with:
-//   id        Int      @id @default(autoincrement())
-//   name      String   @unique
-//   createdAt DateTime @default(now())
-// Then run:  npx prisma migrate dev --name init
-// ---------------------------------------------------------------------------
-// Issue 3 — Category model
-// ---------------------------------------------------------------------------
-model Category {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  createdAt DateTime @default(now())
-}
-
-// ---------------------------------------------------------------------------
-// Lab 2 — Development Requester Model
+// 1. Development Requester Model (Lab 2 Issue 1)
 // ---------------------------------------------------------------------------
 model RequesterUser {
-  id         Int      @id @default(autoincrement())
-  email      String   @unique
-  name       String
-  department String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                 Int          @id @default(autoincrement())
+  email              String       @unique
+  name               String
+  department         String?
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   @@index([isActive])
   @@map("requester_users")
+}
+
+// ---------------------------------------------------------------------------
+// 2. Reference Categories (Lab 2 Issue 2 enhancement)
+// ---------------------------------------------------------------------------
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// 3. Reference Related Systems (Lab 2 Issue 2)
+// ---------------------------------------------------------------------------
+model RelatedSystem {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("related_systems")
 }
