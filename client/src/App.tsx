@@ -2,6 +2,7 @@ import { useState } from "react";
 import { checkSystem, Category } from "./api.js";
 import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
 import { RequesterSelect } from "./components/RequesterSelect.js";
+import { CreateTicket } from "./components/CreateTicket.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
@@ -11,6 +12,7 @@ function AppContent() {
   const [state, setState] = useState<UiState>("idle");
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [view, setView] = useState<"create-ticket" | "my-tickets">("create-ticket");
 
   async function handleCheck() {
     setState("loading");
@@ -171,80 +173,45 @@ function AppContent() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto py-3" style={{ maxWidth: 640 }}>
-            {/* Active Requester Welcome Card */}
-            <div
-              className="card shadow-sm border mb-4"
-              style={{
-                borderRadius: "8px",
-                borderColor: "#D1D9D4",
-                backgroundColor: "#FFFFFF",
-              }}
-            >
-              <div className="card-body p-4">
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                  <div>
-                    <h1 className="h4 fw-bold mb-1" style={{ color: "#1E2B24" }}>
-                      TokTickIT <span className="text-success">IT Service Desk</span>
-                    </h1>
-                    <div className="text-muted small">
-                      Logged in as <strong>{currentRequester.name}</strong> ({currentRequester.email})
-                    </div>
-                  </div>
-                  <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-3 py-2">
-                    Active Requester Context
-                  </span>
-                </div>
-
-                <hr style={{ borderColor: "#EAF6EF" }} />
-
-                <h2 className="h6 fw-semibold text-secondary mb-3">
-                  System Diagnostics & Reference Data
-                </h2>
-
+          <div>
+            {/* Tab Navigation for Logged-In Requester */}
+            <ul className="nav nav-tabs mb-4" style={{ borderColor: '#D1D9D4' }}>
+              <li className="nav-item">
                 <button
-                  className="btn btn-success fw-semibold"
-                  onClick={handleCheck}
-                  disabled={state === "loading"}
-                  style={{ backgroundColor: "#006B3C", borderColor: "#006B3C" }}
+                  className={`nav-link ${view === 'create-ticket' ? 'active fw-bold' : ''}`}
+                  onClick={() => setView('create-ticket')}
+                  style={{
+                    color: view === 'create-ticket' ? '#006B3C' : '#556B60',
+                    backgroundColor: view === 'create-ticket' ? '#EAF6EF' : 'transparent',
+                    borderColor: view === 'create-ticket' ? '#D1D9D4 #D1D9D4 #EAF6EF' : 'transparent'
+                  }}
                 >
-                  {state === "loading" ? "Loading…" : "Check System"}
+                  + Create Ticket
                 </button>
+              </li>
+              <li className="nav-item">
+                <button
+                  className={`nav-link ${view === 'my-tickets' ? 'active fw-bold' : ''}`}
+                  onClick={() => setView('my-tickets')}
+                  style={{
+                    color: view === 'my-tickets' ? '#006B3C' : '#556B60',
+                    backgroundColor: view === 'my-tickets' ? '#EAF6EF' : 'transparent',
+                    borderColor: view === 'my-tickets' ? '#D1D9D4 #D1D9D4 #EAF6EF' : 'transparent'
+                  }}
+                >
+                  My Tickets
+                </button>
+              </li>
+            </ul>
 
-                {state === "loading" && (
-                  <div className="mt-4 text-muted">
-                    <em>Loading…</em>
-                  </div>
-                )}
-
-                {state === "success" && (
-                  <div className="mt-4">
-                    <p className="fw-bold mb-2">
-                      System Status: <span className="text-success">Online</span>
-                    </p>
-                    {categories.length > 0 && (
-                      <div>
-                        <h3 className="h6 mt-3 mb-2">Supported Request Categories</h3>
-                        <ol className="list-group list-group-numbered">
-                          {categories.map((cat) => (
-                            <li key={cat.id} className="list-group-item">
-                              {cat.name}
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {state === "error" && (
-                  <div className="mt-4">
-                    <p className="fw-bold text-danger mb-1">System Status: Offline</p>
-                    <div className="text-danger">{errorMessage || "Unable to connect to TokTickIT API"}</div>
-                  </div>
-                )}
+            {view === 'create-ticket' ? (
+              <CreateTicket onCancel={() => setView('my-tickets')} />
+            ) : (
+              <div className="card p-4 text-center my-4" style={{ backgroundColor: '#FFFFFF', borderColor: '#D1D9D4' }}>
+                <h4 className="fw-bold mb-2" style={{ color: '#1E2B24' }}>My Tickets</h4>
+                <p className="text-muted mb-0">Ticket listing and detail view will be implemented in future issues.</p>
               </div>
-            </div>
+            )}
           </div>
         )}
       </main>
