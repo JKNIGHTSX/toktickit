@@ -22,6 +22,8 @@ model RequesterUser {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
+  tickets            Ticket[]
+
   @@index([isActive])
   @@map("requester_users")
 }
@@ -35,6 +37,8 @@ model Category {
   description String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+
+  tickets     Ticket[]
 }
 
 // ---------------------------------------------------------------------------
@@ -47,5 +51,53 @@ model RelatedSystem {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
+  tickets     Ticket[]
+
   @@map("related_systems")
 }
+
+// ---------------------------------------------------------------------------
+// 4. Ticket Model (Lab 2 Issue 3)
+// ---------------------------------------------------------------------------
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+model Ticket {
+  id                 Int           @id @default(autoincrement())
+  ticketNumber       String        @unique
+  requesterId        Int
+  categoryId         Int
+  relatedSystemId    Int
+  summary            String        @db.VarChar(150)
+  description        String        @db.Text
+  requestedPriority  PriorityLevel @default(MEDIUM)
+  itPriority         PriorityLevel?
+  status             TicketStatus  @default(NEW)
+  ticketOwnerName    String?
+  resolutionSummary  String?       @db.Text
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  requester          RequesterUser @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  category           Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedSystem      RelatedSystem @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+
+  @@index([requesterId, createdAt(sort: Desc)])
+  @@index([ticketNumber])
+  @@index([categoryId])
+  @@index([status])
+  @@map("tickets")
+}

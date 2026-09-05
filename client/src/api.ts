@@ -77,4 +77,75 @@ export async function fetchRelatedSystems(): Promise<RelatedSystem[]> {
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Lab 2 — Issue 3: Ticket Creation API
+// ---------------------------------------------------------------------------
+export type PriorityLevel = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TicketStatus = "NEW" | "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "CANCELLED";
 
+export interface CreateTicketPayload {
+  requesterId: number;
+  categoryId: number;
+  relatedSystemId: number;
+  summary: string;
+  description: string;
+  requestedPriority: PriorityLevel;
+}
+
+export interface Ticket {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  requester: { id: number; name: string; email: string };
+  categoryId: number;
+  category: { id: number; name: string };
+  relatedSystemId: number;
+  relatedSystem: { id: number; name: string };
+  summary: string;
+  description: string;
+  requestedPriority: PriorityLevel;
+  itPriority: PriorityLevel | null;
+  status: TicketStatus;
+  ticketOwnerName: string | null;
+  resolutionSummary: string | null;
+  attachments: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiValidationError {
+  error: string;
+  code: string;
+  details?: { field: string; message: string }[];
+}
+
+export async function createTicket(
+  payload: CreateTicketPayload,
+  requesterId?: number
+): Promise<Ticket> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requesterId !== undefined) {
+    headers["X-Requester-Id"] = String(requesterId);
+  }
+
+  const res = await fetch(`${API_URL}/api/tickets`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let errorData: ApiValidationError = { error: "Failed to create ticket", code: "UNKNOWN_ERROR" };
+    try {
+      errorData = await res.json();
+    } catch {
+      // ignore parse error
+    }
+    const err = new Error(errorData.error) as Error & { status: number; data: ApiValidationError };
+    err.status = res.status;
+    err.data = errorData;
+    throw err;
+  }
+
+  return res.json();
+}
