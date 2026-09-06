@@ -92,6 +92,18 @@ export interface CreateTicketPayload {
   requestedPriority: PriorityLevel;
 }
 
+export interface Attachment {
+  id: number;
+  ticketId: number;
+  originalFileName: string;
+  fileMimeType: string;
+  fileSizeBytes: number;
+  isRemoved: boolean;
+  removedReason?: string | null;
+  removedAt?: string | null;
+  createdAt: string;
+}
+
 export interface Ticket {
   id: number;
   ticketNumber: string;
@@ -108,7 +120,7 @@ export interface Ticket {
   status: TicketStatus;
   ticketOwnerName: string | null;
   resolutionSummary: string | null;
-  attachments: unknown[];
+  attachments: Attachment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -273,5 +285,111 @@ export async function fetchTicketDetail(
 
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Lab 2 — Issue 7: Attachment Lifecycle API
+// ---------------------------------------------------------------------------
+
+export async function uploadAttachment(
+  ticketIdOrNumber: string | number,
+  file: File,
+  requesterId?: number
+): Promise<Attachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers: Record<string, string> = {};
+  if (requesterId !== undefined) {
+    headers["X-Requester-Id"] = String(requesterId);
+  }
+
+  const res = await fetch(`${API_URL}/api/tickets/${ticketIdOrNumber}/attachments`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let errorData: any = { error: "Failed to upload attachment", code: "UPLOAD_FAILED" };
+    try {
+      errorData = await res.json();
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorData.error) as Error & { status: number; data: any };
+    err.status = res.status;
+    err.data = errorData;
+    throw err;
+  }
+
+  return res.json();
+}
+
+export async function fetchAttachmentMetadata(
+  attachmentId: number,
+  requesterId?: number
+): Promise<Attachment> {
+  const headers: Record<string, string> = {};
+  if (requesterId !== undefined) {
+    headers["X-Requester-Id"] = String(requesterId);
+  }
+
+  const res = await fetch(`${API_URL}/api/attachments/${attachmentId}/metadata`, {
+    headers,
+  });
+
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch attachment metadata";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorMsg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return res.json();
+}
+
+export function getAttachmentDownloadUrl(attachmentId: number, requesterId?: number): string {
+  const query = requesterId !== undefined ? `?requesterId=${requesterId}` : "";
+  return `${API_URL}/api/attachments/${attachmentId}/download${query}`;
+}
+
+export async function softRemoveAttachment(
+  attachmentId: number,
+  reason?: string,
+  requesterId?: number
+): Promise<{ id: number; isRemoved: boolean; removedReason?: string; removedAt?: string; message: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requesterId !== undefined) {
+    headers["X-Requester-Id"] = String(requesterId);
+  }
+
+  const res = await fetch(`${API_URL}/api/attachments/${attachmentId}`, {
+    method: "DELETE",
+    headers,
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!res.ok) {
+    let errorMsg = "Failed to remove attachment";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorMsg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return res.json();
+}
+
 
 

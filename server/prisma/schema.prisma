@@ -23,6 +23,7 @@ model RequesterUser {
   updatedAt          DateTime     @updatedAt
 
   tickets            Ticket[]
+  removedAttachments Attachment[] @relation("RemovedByRequester")
 
   @@index([isActive])
   @@map("requester_users")
@@ -39,6 +40,8 @@ model Category {
   createdAt   DateTime @default(now())
 
   tickets     Ticket[]
+
+  @@map("categories")
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +97,36 @@ model Ticket {
   requester          RequesterUser @relation(fields: [requesterId], references: [id], onDelete: Restrict)
   category           Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   relatedSystem      RelatedSystem @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+  attachments        Attachment[]
 
   @@index([requesterId, createdAt(sort: Desc)])
   @@index([ticketNumber])
   @@index([categoryId])
   @@index([status])
   @@map("tickets")
-}
+}
+
+// ---------------------------------------------------------------------------
+// 5. Attachment Model (Lab 2 Issue 7)
+// ---------------------------------------------------------------------------
+model Attachment {
+  id                   Int            @id @default(autoincrement())
+  ticketId             Int
+  originalFileName     String
+  storedFileName       String         @unique
+  fileMimeType         String
+  fileSizeBytes        Int
+  storagePath          String
+  isRemoved            Boolean        @default(false)
+  removedReason        String?        @db.VarChar(255)
+  removedAt            DateTime?
+  removedByRequesterId Int?
+  createdAt            DateTime       @default(now())
+
+  ticket               Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  removedByRequester   RequesterUser? @relation("RemovedByRequester", fields: [removedByRequesterId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, isRemoved])
+  @@map("attachments")
+}
+
