@@ -240,3 +240,38 @@ export async function fetchTickets(
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Lab 2 — Issue 6: Ticket Detail API
+// ---------------------------------------------------------------------------
+export type TicketDetail = Ticket;
+
+export async function fetchTicketDetail(
+  idOrNumber: string | number,
+  requesterId?: number
+): Promise<TicketDetail> {
+  const headers: Record<string, string> = {};
+  if (requesterId !== undefined) {
+    headers["X-Requester-Id"] = String(requesterId);
+  }
+
+  const query = requesterId !== undefined ? `?requesterId=${requesterId}` : "";
+  const url = `${API_URL}/api/tickets/${idOrNumber}${query}`;
+  const res = await fetch(url, { headers });
+
+  if (!res.ok) {
+    let errorMsg = "Ticket not found or access denied";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorMsg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return res.json();
+}
+
+
