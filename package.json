@@ -1,0 +1,27 @@
+{
+  "name": "toktickit",
+  "version": "1.0.0",
+  "description": "TokTickIT is an IT service desk web application for handling Account and Access, Hardware, Software, and Network requests.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JKNIGHTSX/toktickit.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JKNIGHTSX/toktickit/issues"
+  },
+  "homepage": "https://github.com/JKNIGHTSX/toktickit#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
