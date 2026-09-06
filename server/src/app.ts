@@ -245,4 +245,141 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/tickets — Personal Ticket List for Active Requester (Lab 2 Issue 5)
+// ---------------------------------------------------------------------------
+app.get("/api/tickets", async (req: Request, res: Response) => {
+  try {
+    const prisma = getPrisma();
+
+    // 1. Resolve active requesterId from X-Requester-Id header or requesterId query param
+    const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
+    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
+
+    if (isNaN(requesterId) || requesterId <= 0) {
+      res.status(400).json({
+        error: "Requester ID is required to retrieve tickets",
+        code: "MISSING_REQUESTER_ID",
+      });
+      return;
+    }
+
+    // 2. Parse & sanitize pagination params
+    let page = parseInt(String(req.query.page ?? "1"), 10);
+    if (isNaN(page) || page < 1) page = 1;
+
+    let pageSize = parseInt(String(req.query.pageSize ?? "10"), 10);
+    if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
+    if (pageSize > 50) pageSize = 50;
+
+    // 3. Build filter conditions
+    const where: any = {
+      requesterId: requesterId,
+    };
+
+    // Text search (case-insensitive on ticketNumber or summary)
+    const search = req.query.search !== undefined ? String(req.query.search).trim() : "";
+    if (search.length > 0) {
+      where.OR = [
+        { ticketNumber: { contains: search, mode: "insensitive" } },
+        { summary: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Category filter
+    if (req.query.categoryId !== undefined && req.query.categoryId !== "") {
+      const catId = parseInt(String(req.query.categoryId), 10);
+      if (!isNaN(catId)) {
+        where.categoryId = catId;
+      }
+    }
+
+    // Priority & Status Enum filters
+    const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+    const validStatuses = ["NEW", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED", "CANCELLED"];
+
+    if (req.query.requestedPriority && validPriorities.includes(String(req.query.requestedPriority))) {
+      where.requestedPriority = String(req.query.requestedPriority);
+    }
+
+    if (req.query.itPriority && validPriorities.includes(String(req.query.itPriority))) {
+      where.itPriority = String(req.query.itPriority);
+    }
+
+    if (req.query.status && validStatuses.includes(String(req.query.status))) {
+      where.status = String(req.query.status);
+    }
+
+    // 4. Build sorting
+    const validSortFields = ["createdAt", "ticketNumber", "summary", "status", "requestedPriority", "updatedAt"];
+    const sortBy = validSortFields.includes(String(req.query.sortBy)) ? String(req.query.sortBy) : "createdAt";
+    const sortOrder = String(req.query.sortOrder).toLowerCase() === "asc" ? "asc" : "desc";
+
+    const orderBy: any[] = [{ [sortBy]: sortOrder }];
+    if (sortBy !== "createdAt") {
+      orderBy.push({ createdAt: "desc" });
+    }
+
+    // 5. Query DB for total count and paginated items
+    const totalItems = await prisma.ticket.count({ where });
+
+    const skip = (page - 1) * pageSize;
+    const tickets = await prisma.ticket.findMany({
+      where,
+      orderBy,
+      skip,
+      take: pageSize,
+      include: {
+        category: {
+          select: { id: true, name: true },
+        },
+        relatedSystem: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // 6. Calculate pagination metadata
+    const totalPages = Math.ceil(totalItems / pageSize);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1 && totalPages > 0;
+
+    // 7. Map payload items
+    const data = tickets.map((t) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      requesterId: t.requesterId,
+      category: t.category,
+      relatedSystem: t.relatedSystem,
+      summary: t.summary,
+      requestedPriority: t.requestedPriority,
+      itPriority: t.itPriority,
+      status: t.status,
+      ticketOwnerName: t.ticketOwnerName,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      attachmentCount: 0,
+    }));
+
+    res.status(200).json({
+      data,
+      pagination: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages,
+        hasNextPage,
+        hasPrevPage,
+      },
+    });
+  } catch (_err) {
+    console.error("GET /api/tickets error:", _err);
+    res.status(500).json({
+      error: "Failed to fetch tickets",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
 export default app;
+

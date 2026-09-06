@@ -149,3 +149,94 @@ export async function createTicket(
 
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Lab 2 — Issue 5: Fetch My Tickets API
+// ---------------------------------------------------------------------------
+export interface TicketListItem {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  category: { id: number; name: string };
+  relatedSystem: { id: number; name: string };
+  summary: string;
+  requestedPriority: PriorityLevel;
+  itPriority: PriorityLevel | null;
+  status: TicketStatus;
+  ticketOwnerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachmentCount: number;
+}
+
+export interface PaginationMetadata {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface PaginatedTicketsResponse {
+  data: TicketListItem[];
+  pagination: PaginationMetadata;
+}
+
+export interface FetchTicketsParams {
+  requesterId?: number;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  categoryId?: number;
+  requestedPriority?: PriorityLevel;
+  itPriority?: PriorityLevel;
+  status?: TicketStatus;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export async function fetchTickets(
+  params: FetchTicketsParams = {},
+  requesterId?: number
+): Promise<PaginatedTicketsResponse> {
+  const query = new URLSearchParams();
+  
+  const activeRequesterId = requesterId ?? params.requesterId;
+  if (activeRequesterId !== undefined) {
+    query.set("requesterId", String(activeRequesterId));
+  }
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  if (params.search !== undefined && params.search.trim() !== "") {
+    query.set("search", params.search.trim());
+  }
+  if (params.categoryId !== undefined) query.set("categoryId", String(params.categoryId));
+  if (params.requestedPriority !== undefined) query.set("requestedPriority", params.requestedPriority);
+  if (params.itPriority !== undefined) query.set("itPriority", params.itPriority);
+  if (params.status !== undefined) query.set("status", params.status);
+  if (params.sortBy !== undefined) query.set("sortBy", params.sortBy);
+  if (params.sortOrder !== undefined) query.set("sortOrder", params.sortOrder);
+
+  const headers: Record<string, string> = {};
+  if (activeRequesterId !== undefined) {
+    headers["X-Requester-Id"] = String(activeRequesterId);
+  }
+
+  const url = `${API_URL}/api/tickets?${query.toString()}`;
+  const res = await fetch(url, { headers });
+
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch tickets";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMsg);
+  }
+
+  return res.json();
+}
+

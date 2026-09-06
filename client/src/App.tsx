@@ -3,6 +3,7 @@ import { checkSystem, Category } from "./api.js";
 import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
 import { RequesterSelect } from "./components/RequesterSelect.js";
 import { CreateTicket } from "./components/CreateTicket.js";
+import { MyTickets } from "./components/MyTickets.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
@@ -207,10 +208,7 @@ function AppContent() {
             {view === 'create-ticket' ? (
               <CreateTicket onCancel={() => setView('my-tickets')} />
             ) : (
-              <div className="card p-4 text-center my-4" style={{ backgroundColor: '#FFFFFF', borderColor: '#D1D9D4' }}>
-                <h4 className="fw-bold mb-2" style={{ color: '#1E2B24' }}>My Tickets</h4>
-                <p className="text-muted mb-0">Ticket listing and detail view will be implemented in future issues.</p>
-              </div>
+              <MyTickets onCreateTicket={() => setView('create-ticket')} />
             )}
           </div>
         )}
