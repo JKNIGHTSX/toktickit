@@ -806,10 +806,18 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
     }
 
     // 4. Resolve reason
-    const reason = typeof req.body?.reason === "string" && req.body.reason.trim().length > 0
-      ? req.body.reason.trim()
-      : "Removed by requester";
+    const reason =
+      typeof req.body?.reason === "string"
+        ? req.body.reason.trim()
+        : "";
 
+    if (!reason) {
+      res.status(400).json({
+        error: "Remove reason is required",
+        code: "REMOVE_REASON_REQUIRED",
+      });
+      return;
+    }
     // 5. Update record with soft removal fields
     const updated = await prisma.attachment.update({
       where: { id: attachmentId },

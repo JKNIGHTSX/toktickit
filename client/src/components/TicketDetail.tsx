@@ -135,7 +135,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
     try {
       await softRemoveAttachment(
         attachmentToRemove.id,
-        removeReason.trim() || "Removed by requester",
+        removeReason.trim(),
         currentRequester.id
       );
       setAttachmentToRemove(null);
@@ -540,7 +540,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                       type="button"
                       className="btn-close"
                       onClick={() => setAttachmentToRemove(null)}
-                      disabled={isRemoving}
+                      disabled={isRemoving || !removeReason.trim()}
                       aria-label="Close"
                     ></button>
                   </div>
@@ -560,7 +560,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
                     <div className="mb-3">
                       <label htmlFor="removalReason" className="form-label small fw-semibold text-dark">
-                        Reason for removal <span className="text-muted font-normal">(Optional)</span>
+                        Reason for removal <span className="text-danger">*</span>
                       </label>
                       <input
                         type="text"
@@ -578,7 +578,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                       type="button"
                       className="btn btn-outline-secondary px-3"
                       onClick={() => setAttachmentToRemove(null)}
-                      disabled={isRemoving}
+                      disabled={isRemoving || !removeReason.trim()}
                     >
                       Cancel
                     </button>
@@ -586,7 +586,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                       type="button"
                       className="btn btn-danger px-4 fw-semibold"
                       onClick={handleConfirmRemove}
-                      disabled={isRemoving}
+                      disabled={isRemoving || !removeReason.trim()}
                       style={{ backgroundColor: "#B3261E", borderColor: "#B3261E" }}
                     >
                       {isRemoving ? "Removing…" : "Confirm Removal"}
