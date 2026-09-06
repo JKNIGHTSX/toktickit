@@ -12,9 +12,10 @@ import { useRequester } from "../context/RequesterContext.js";
 
 interface MyTicketsProps {
   onCreateTicket?: () => void;
+  onSelectTicket?: (idOrNumber: number | string) => void;
 }
 
-export function MyTickets({ onCreateTicket }: MyTicketsProps) {
+export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
   const { currentRequester } = useRequester();
 
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -467,7 +468,11 @@ export function MyTickets({ onCreateTicket }: MyTicketsProps) {
                 </thead>
                 <tbody>
                   {tickets.map((t) => (
-                    <tr key={t.id} style={{ cursor: "default" }}>
+                    <tr
+                      key={t.id}
+                      onClick={() => onSelectTicket?.(t.id)}
+                      style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                    >
                       <td className="fw-bold font-monospace text-nowrap" style={{ color: "#006B3C" }}>
                         {t.ticketNumber}
                         {t.attachmentCount > 0 && (
@@ -497,7 +502,13 @@ export function MyTickets({ onCreateTicket }: MyTicketsProps) {
               <div
                 key={t.id}
                 className="card shadow-sm border mb-3"
-                style={{ backgroundColor: "#FFFFFF", borderColor: "#D1D9D4", borderRadius: "8px" }}
+                onClick={() => onSelectTicket?.(t.id)}
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderColor: "#D1D9D4",
+                  borderRadius: "8px",
+                  cursor: onSelectTicket ? "pointer" : "default",
+                }}
               >
                 <div className="card-body p-3">
                   <div className="d-flex align-items-center justify-content-between mb-2">

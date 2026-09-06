@@ -4,6 +4,7 @@ import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
 import { RequesterSelect } from "./components/RequesterSelect.js";
 import { CreateTicket } from "./components/CreateTicket.js";
 import { MyTickets } from "./components/MyTickets.js";
+import { TicketDetail } from "./components/TicketDetail.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
@@ -13,7 +14,8 @@ function AppContent() {
   const [state, setState] = useState<UiState>("idle");
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [view, setView] = useState<"create-ticket" | "my-tickets">("create-ticket");
+  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail">("create-ticket");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
 
   async function handleCheck() {
     setState("loading");
@@ -205,10 +207,23 @@ function AppContent() {
               </li>
             </ul>
 
-            {view === 'create-ticket' ? (
+            {view === 'create-ticket' && (
               <CreateTicket onCancel={() => setView('my-tickets')} />
-            ) : (
-              <MyTickets onCreateTicket={() => setView('create-ticket')} />
+            )}
+            {view === 'my-tickets' && (
+              <MyTickets
+                onCreateTicket={() => setView('create-ticket')}
+                onSelectTicket={(id) => {
+                  setSelectedTicketId(id);
+                  setView('ticket-detail');
+                }}
+              />
+            )}
+            {view === 'ticket-detail' && selectedTicketId !== null && (
+              <TicketDetail
+                ticketId={selectedTicketId}
+                onBack={() => setView('my-tickets')}
+              />
             )}
           </div>
         )}

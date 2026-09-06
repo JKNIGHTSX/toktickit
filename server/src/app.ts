@@ -381,5 +381,89 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/tickets/:idOrNumber — Ticket Details for Active Requester (Lab 2 Issue 6)
+// ---------------------------------------------------------------------------
+app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
+  try {
+    const prisma = getPrisma();
+
+    // 1. Resolve active requesterId from X-Requester-Id header or requesterId query param
+    const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
+    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
+
+    if (isNaN(requesterId) || requesterId <= 0) {
+      res.status(400).json({
+        error: "Requester ID is required to retrieve ticket details",
+        code: "MISSING_REQUESTER_ID",
+      });
+      return;
+    }
+
+    // 2. Parse path parameter (:idOrNumber)
+    const param = String(req.params.idOrNumber).trim();
+    const numericId = parseInt(param, 10);
+    const isNumeric = !isNaN(numericId) && String(numericId) === param;
+
+    // 3. Query DB by id or ticketNumber
+    const where: any = isNumeric
+      ? { OR: [{ id: numericId }, { ticketNumber: param }] }
+      : { ticketNumber: param };
+
+    const ticket = await prisma.ticket.findFirst({
+      where,
+      include: {
+        requester: {
+          select: { id: true, name: true, email: true, department: true },
+        },
+        category: {
+          select: { id: true, name: true },
+        },
+        relatedSystem: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // 4. Ownership verification & Not Found handling
+    if (!ticket || ticket.requesterId !== requesterId) {
+      res.status(404).json({
+        error: "Ticket not found or you do not have permission to view it",
+        code: "TICKET_NOT_FOUND",
+      });
+      return;
+    }
+
+    // 5. Return complete ticket detail JSON payload
+    res.status(200).json({
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      requesterId: ticket.requesterId,
+      requester: ticket.requester,
+      categoryId: ticket.categoryId,
+      category: ticket.category,
+      relatedSystemId: ticket.relatedSystemId,
+      relatedSystem: ticket.relatedSystem,
+      summary: ticket.summary,
+      description: ticket.description,
+      requestedPriority: ticket.requestedPriority,
+      itPriority: ticket.itPriority,
+      status: ticket.status,
+      ticketOwnerName: ticket.ticketOwnerName,
+      resolutionSummary: ticket.resolutionSummary,
+      attachments: [],
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+    });
+  } catch (_err) {
+    console.error("GET /api/tickets/:idOrNumber error:", _err);
+    res.status(500).json({
+      error: "Failed to fetch ticket details",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
 export default app;
+
 
