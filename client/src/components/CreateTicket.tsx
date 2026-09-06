@@ -4,6 +4,7 @@ import {
   fetchCategories, 
   fetchRelatedSystems, 
   createTicket, 
+  uploadAttachment,
   Category, 
   RelatedSystem, 
   PriorityLevel 
@@ -191,6 +192,17 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
         relatedSystemId: parseInt(relatedSystemId, 10),
         requesterId: currentRequester.id
       }, currentRequester.id);
+
+      // Upload queued attachments sequentially if any
+      if (attachments.length > 0) {
+        for (const att of attachments) {
+          try {
+            await uploadAttachment(ticket.id, att.file, currentRequester.id);
+          } catch (uploadErr: any) {
+            console.error(`Failed to upload attachment ${att.name}:`, uploadErr);
+          }
+        }
+      }
 
       setSubmitSuccess(ticket.ticketNumber);
       resetForm();

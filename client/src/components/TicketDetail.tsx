@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from "react";
-import { fetchTicketDetail, TicketDetail as TicketDetailType, PriorityLevel, TicketStatus } from "../api.js";
+import {
+  fetchTicketDetail,
+  uploadAttachment,
+  softRemoveAttachment,
+  getAttachmentDownloadUrl,
+  TicketDetail as TicketDetailType,
+  Attachment,
+  PriorityLevel,
+  TicketStatus,
+} from "../api.js";
 import { useRequester } from "../context/RequesterContext.js";
 
 interface TicketDetailProps {
   ticketId: string | number;
   onBack: () => void;
 }
+
+const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_ACTIVE_ATTACHMENTS = 5;
 
 export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const { currentRequester } = useRequester();
@@ -14,7 +27,19 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Soft Removal Modal State
+  const [attachmentToRemove, setAttachmentToRemove] = useState<Attachment | null>(null);
+  const [removeReason, setRemoveReason] = useState<string>("");
+  const [isRemoving, setIsRemoving] = useState<boolean>(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Add Attachment Modal State
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+
+  const loadTicket = () => {
     if (!currentRequester) return;
 
     setLoading(true);
@@ -28,9 +53,35 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
       .finally(() => {
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    loadTicket();
   }, [ticketId, currentRequester]);
 
-  // Helper Badge Renderers
+  // Helper formatting
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (isoString: string) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return isoString;
+    }
+  };
+
+  // Badge Renderers
   const renderPriorityBadge = (priority: PriorityLevel | null) => {
     if (!priority) return <span className="text-muted small">Unassigned</span>;
 
@@ -74,20 +125,73 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
     );
   };
 
-  const formatDate = (isoString: string) => {
+  // Attachment Actions
+  const handleConfirmRemove = async () => {
+    if (!attachmentToRemove || !currentRequester) return;
+
+    setIsRemoving(true);
+    setRemoveError(null);
+
     try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return isoString;
+      await softRemoveAttachment(
+        attachmentToRemove.id,
+        removeReason.trim(),
+        currentRequester.id
+      );
+      setAttachmentToRemove(null);
+      setRemoveReason("");
+      loadTicket();
+    } catch (err: any) {
+      setRemoveError(err?.message || "Failed to remove attachment");
+    } finally {
+      setIsRemoving(false);
     }
   };
+
+  const handleFileSelectForUpload = (file: File | null) => {
+    setUploadError(null);
+    if (!file) {
+      setUploadFile(null);
+      return;
+    }
+
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      setUploadError(`Invalid file format "${file.name}". Allowed: JPG, PNG, WEBP, PDF.`);
+      setUploadFile(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setUploadError(`File "${file.name}" exceeds maximum allowed size of 5MB.`);
+      setUploadFile(null);
+      return;
+    }
+
+    setUploadFile(file);
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile || !currentRequester || !ticket) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      await uploadAttachment(ticket.id, uploadFile, currentRequester.id);
+      setShowUploadModal(false);
+      setUploadFile(null);
+      loadTicket();
+    } catch (err: any) {
+      setUploadError(err?.message || err?.data?.error || "Failed to upload file.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const activeAttachments = ticket?.attachments?.filter((a) => !a.isRemoved) || [];
+  const removedAttachments = ticket?.attachments?.filter((a) => a.isRemoved) || [];
 
   return (
     <div className="container p-0 mx-auto" style={{ maxWidth: "860px" }}>
@@ -282,20 +386,307 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
             </div>
           </div>
 
-          {/* Attachments Section Placeholder */}
+          {/* Attachments Panel */}
           <div
             className="card shadow-sm border mb-4"
             style={{ backgroundColor: "#FFFFFF", borderColor: "#D1D9D4", borderRadius: "8px" }}
           >
             <div className="card-header bg-white border-bottom p-3 d-flex align-items-center justify-content-between">
               <h2 className="h6 fw-bold mb-0" style={{ color: "#1E2B24" }}>
-                Attachments (0)
+                Attachments ({activeAttachments.length} / {MAX_ACTIVE_ATTACHMENTS} Active)
               </h2>
+              <button
+                type="button"
+                className="btn btn-sm text-white fw-semibold"
+                style={{ backgroundColor: "#006B3C", borderColor: "#006B3C" }}
+                disabled={activeAttachments.length >= MAX_ACTIVE_ATTACHMENTS}
+                onClick={() => setShowUploadModal(true)}
+              >
+                + Add Attachment
+              </button>
             </div>
-            <div className="card-body p-4 text-center text-muted small">
-              No attachments associated with this ticket.
+
+            <div className="card-body p-4">
+              {/* Active Attachments Section */}
+              <h3 className="h6 fw-semibold mb-3" style={{ color: "#1E2B24", fontSize: "14px" }}>
+                Active Attachments
+              </h3>
+
+              {activeAttachments.length === 0 ? (
+                <p className="text-muted small fst-italic mb-4">No active attachments on this ticket.</p>
+              ) : (
+                <div className="list-group mb-4">
+                  {activeAttachments.map((att) => {
+                    const downloadUrl = getAttachmentDownloadUrl(att.id, currentRequester?.id);
+                    return (
+                      <div
+                        key={att.id}
+                        className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 mb-2 border rounded"
+                        style={{ borderColor: "#D1D9D4" }}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span style={{ fontSize: "18px" }}>📄</span>
+                          <div>
+                            <span className="fw-semibold text-dark me-2">{att.originalFileName}</span>
+                            <span className="badge bg-secondary text-white small me-2">
+                              {formatFileSize(att.fileSizeBytes)}
+                            </span>
+                            <span className="text-muted small">Uploaded {formatDate(att.createdAt)}</span>
+                          </div>
+                        </div>
+
+                        <div className="d-flex align-items-center gap-2">
+                          <a
+                            href={downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-success fw-semibold"
+                            style={{ color: "#006B3C", borderColor: "#006B3C" }}
+                            download={att.originalFileName}
+                          >
+                            Download
+                          </a>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger fw-semibold"
+                            style={{ color: "#B3261E", borderColor: "#B3261E" }}
+                            onClick={() => {
+                              setAttachmentToRemove(att);
+                              setRemoveReason("");
+                              setRemoveError(null);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Soft-Removed Attachments Audit Section */}
+              {removedAttachments.length > 0 && (
+                <div className="pt-3 border-top" style={{ borderColor: "#D1D9D4" }}>
+                  <h3 className="h6 fw-semibold mb-3" style={{ color: "#556B60", fontSize: "14px" }}>
+                    Removed Attachments History (Audit Record)
+                  </h3>
+                  <div className="list-group">
+                    {removedAttachments.map((att) => (
+                      <div
+                        key={att.id}
+                        className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 mb-2 border rounded"
+                        style={{ backgroundColor: "#F5F7F6", borderColor: "#D1D9D4" }}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span style={{ fontSize: "18px", opacity: 0.6 }}>🗑️</span>
+                          <div>
+                            <span
+                              className="fw-semibold text-muted text-decoration-line-through me-2"
+                              style={{ color: "#556B60" }}
+                            >
+                              {att.originalFileName}
+                            </span>
+                            <span
+                              className="badge px-2 py-1 me-2"
+                              style={{ backgroundColor: "#F5F5F5", color: "#616161", border: "1px solid #E0E0E0" }}
+                            >
+                              Removed
+                            </span>
+                            <span className="text-muted small">
+                              Removed {att.removedAt ? formatDate(att.removedAt) : "—"}
+                            </span>
+                            {att.removedReason && (
+                              <div className="small text-muted fst-italic mt-1">
+                                Reason: "{att.removedReason}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary disabled"
+                            disabled
+                            style={{ cursor: "not-allowed", opacity: 0.6 }}
+                            title="Download access blocked for soft-removed files (HTTP 410 Gone)"
+                          >
+                            Unavailable
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Soft Removal Confirmation Modal */}
+          {attachmentToRemove && (
+            <div
+              className="modal show d-block"
+              tabIndex={-1}
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content" style={{ borderRadius: "8px" }}>
+                  <div className="modal-header border-bottom">
+                    <h5 className="modal-title text-danger fw-bold">Remove Attachment</h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => setAttachmentToRemove(null)}
+                      disabled={isRemoving || !removeReason.trim()}
+                      aria-label="Close"
+                    ></button>
+                  </div>
+                  <div className="modal-body py-4">
+                    <p className="mb-2 text-dark">
+                      Are you sure you want to remove <strong>"{attachmentToRemove.originalFileName}"</strong>?
+                    </p>
+                    <p className="small text-muted mb-3">
+                      This attachment will be soft-removed and will no longer be downloadable. Its audit metadata will remain in the ticket history.
+                    </p>
+
+                    {removeError && (
+                      <div className="alert alert-danger py-2 px-3 mb-3 small" role="alert">
+                        {removeError}
+                      </div>
+                    )}
+
+                    <div className="mb-3">
+                      <label htmlFor="removalReason" className="form-label small fw-semibold text-dark">
+                        Reason for removal <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        id="removalReason"
+                        className="form-control"
+                        placeholder="e.g. Uploaded incorrect file version"
+                        value={removeReason}
+                        onChange={(e) => setRemoveReason(e.target.value)}
+                        maxLength={255}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer border-top bg-light">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary px-3"
+                      onClick={() => setAttachmentToRemove(null)}
+                      disabled={isRemoving || !removeReason.trim()}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger px-4 fw-semibold"
+                      onClick={handleConfirmRemove}
+                      disabled={isRemoving || !removeReason.trim()}
+                      style={{ backgroundColor: "#B3261E", borderColor: "#B3261E" }}
+                    >
+                      {isRemoving ? "Removing…" : "Confirm Removal"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Attachment Modal */}
+          {showUploadModal && (
+            <div
+              className="modal show d-block"
+              tabIndex={-1}
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content" style={{ borderRadius: "8px" }}>
+                  <form onSubmit={handleUploadSubmit}>
+                    <div className="modal-header border-bottom">
+                      <h5 className="modal-title fw-bold" style={{ color: "#1E2B24" }}>
+                        Add Attachment to Ticket
+                      </h5>
+                      <button
+                        type="button"
+                        className="btn-close"
+                        onClick={() => {
+                          setShowUploadModal(false);
+                          setUploadFile(null);
+                          setUploadError(null);
+                        }}
+                        disabled={isUploading}
+                        aria-label="Close"
+                      ></button>
+                    </div>
+
+                    <div className="modal-body py-4">
+                      {uploadError && (
+                        <div className="alert alert-danger py-2 px-3 mb-3 small" role="alert">
+                          {uploadError}
+                        </div>
+                      )}
+
+                      <div className="mb-3">
+                        <label htmlFor="modalFileInput" className="form-label small fw-semibold text-dark">
+                          Select File <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="file"
+                          id="modalFileInput"
+                          className="form-control"
+                          accept=".jpg,.jpeg,.png,.webp,.pdf"
+                          onChange={(e) => handleFileSelectForUpload(e.target.files?.[0] || null)}
+                        />
+                        <div className="form-text small text-muted">
+                          Allowed formats: JPG, PNG, WEBP, PDF (Max size: 5MB)
+                        </div>
+                      </div>
+
+                      {uploadFile && (
+                        <div className="p-3 bg-light rounded border d-flex align-items-center justify-content-between">
+                          <div className="d-flex align-items-center gap-2">
+                            <span>📄</span>
+                            <span className="fw-semibold text-dark">{uploadFile.name}</span>
+                          </div>
+                          <span className="badge bg-secondary">{formatFileSize(uploadFile.size)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="modal-footer border-top bg-light">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary px-3"
+                        onClick={() => {
+                          setShowUploadModal(false);
+                          setUploadFile(null);
+                          setUploadError(null);
+                        }}
+                        disabled={isUploading}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn text-white px-4 fw-semibold"
+                        disabled={!uploadFile || isUploading}
+                        style={{ backgroundColor: "#006B3C", borderColor: "#006B3C" }}
+                      >
+                        {isUploading ? "Uploading…" : "Upload Attachment"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -303,3 +694,4 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 }
 
 export default TicketDetail;
+
