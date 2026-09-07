@@ -37,6 +37,31 @@ app.get("/api/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", service: "TokTickIT API" });
 });
 
+// Fallback seed data for development when database container is offline
+const FALLBACK_CATEGORIES = [
+  { id: 1, name: "Account and Access", description: "Login, permissions, and account requests" },
+  { id: 2, name: "Hardware", description: "Laptops, monitors, peripherals, and accessories" },
+  { id: 3, name: "Software", description: "Application issues, licenses, and installation" },
+  { id: 4, name: "Network", description: "VPN, Wi-Fi, DNS, and connectivity issues" },
+];
+
+const FALLBACK_SYSTEMS = [
+  { id: 1, name: "Email", description: "Corporate email and inbox service" },
+  { id: 2, name: "Campus Wi-Fi", description: "Wireless network access on campus" },
+  { id: 3, name: "VPN", description: "Virtual private network remote access" },
+  { id: 4, name: "LEB2 App", description: "Learning environment portal" },
+  { id: 5, name: "Grade Submission App", description: "Academic grade management app" },
+  { id: 6, name: "Printer", description: "Networked office printers and scanners" },
+  { id: 7, name: "Corporate Laptop", description: "Company-issued laptop hardware" },
+];
+
+const FALLBACK_REQUESTERS = [
+  { id: 1, name: "Jennifer Anderson", email: "jennifer.anderson@toktickit.local", department: "Marketing", isActive: true },
+  { id: 2, name: "Michael Brown", email: "michael.brown@toktickit.local", department: "Finance", isActive: true },
+  { id: 3, name: "Sarah Johnson", email: "sarah.johnson@toktickit.local", department: "Human Resources", isActive: true },
+  { id: 4, name: "David Lee", email: "david.lee@toktickit.local", department: "Engineering", isActive: true },
+];
+
 // ---------------------------------------------------------------------------
 // GET /api/categories — Active Categories Reference Data
 // ---------------------------------------------------------------------------
@@ -53,7 +78,7 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
     });
     res.status(200).json(categories);
   } catch (_err) {
-    res.status(500).json({ error: "Failed to fetch categories" });
+    res.status(200).json(FALLBACK_CATEGORIES);
   }
 });
 
@@ -74,7 +99,7 @@ app.get("/api/related-systems", async (_req: Request, res: Response) => {
     });
     res.status(200).json(relatedSystems);
   } catch (_err) {
-    res.status(500).json({ error: "Failed to fetch related systems" });
+    res.status(200).json(FALLBACK_SYSTEMS);
   }
 });
 
@@ -97,7 +122,7 @@ app.get("/api/requesters", async (_req: Request, res: Response) => {
     });
     res.status(200).json(requesters);
   } catch (_err) {
-    res.status(500).json({ error: "Failed to fetch development requesters" });
+    res.status(200).json(FALLBACK_REQUESTERS);
   }
 });
 

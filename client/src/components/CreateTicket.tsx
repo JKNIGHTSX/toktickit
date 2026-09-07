@@ -278,39 +278,41 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
 
         <form onSubmit={handleSubmit} noValidate>
           {/* Read-only Information Row */}
-          <div className="row g-3 mb-4 p-3 rounded" style={{ backgroundColor: '#F0F4F1', border: '1px solid #D1D9D4' }}>
-            <div className="col-12 col-md-4">
-              <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Ticket Number</label>
-              <input 
-                type="text" 
-                className="form-control form-control-sm bg-white" 
-                value="Pending Generation" 
-                disabled 
-                readOnly 
-                style={{ color: '#556B60' }}
-              />
-            </div>
-            <div className="col-12 col-md-4">
-              <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Date</label>
-              <input 
-                type="text" 
-                className="form-control form-control-sm bg-white" 
-                value={new Date().toLocaleDateString()} 
-                disabled 
-                readOnly 
-                style={{ color: '#556B60' }}
-              />
-            </div>
-            <div className="col-12 col-md-4">
-              <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Requester</label>
-              <input 
-                type="text" 
-                className="form-control form-control-sm bg-white" 
-                value={currentRequester ? `${currentRequester.name} (${currentRequester.email})` : 'Not Selected'} 
-                disabled 
-                readOnly 
-                style={{ color: '#556B60' }}
-              />
+          <div className="p-3 mb-4 rounded" style={{ backgroundColor: '#F0F4F1', border: '1px solid #D1D9D4' }}>
+            <div className="row g-3">
+              <div className="col-12 col-md-4">
+                <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Ticket Number</label>
+                <input 
+                  type="text" 
+                  className="form-control form-control-sm bg-white" 
+                  value="Pending Generation" 
+                  disabled 
+                  readOnly 
+                  style={{ color: '#556B60' }}
+                />
+              </div>
+              <div className="col-12 col-md-4">
+                <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Date</label>
+                <input 
+                  type="text" 
+                  className="form-control form-control-sm bg-white" 
+                  value={new Date().toLocaleDateString()} 
+                  disabled 
+                  readOnly 
+                  style={{ color: '#556B60' }}
+                />
+              </div>
+              <div className="col-12 col-md-4">
+                <label className="form-label small fw-semibold text-uppercase" style={{ color: '#556B60' }}>Requester</label>
+                <input 
+                  type="text" 
+                  className="form-control form-control-sm bg-white" 
+                  value={currentRequester ? `${currentRequester.name} (${currentRequester.email})` : 'Not Selected'} 
+                  disabled 
+                  readOnly 
+                  style={{ color: '#556B60' }}
+                />
+              </div>
             </div>
           </div>
 
@@ -496,10 +498,10 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
               <ul className="list-group mt-3">
                 {attachments.map((att) => (
                   <li key={att.id} className="list-group-item d-flex justify-content-between align-items-center py-2 px-3" style={{ borderColor: '#D1D9D4' }}>
-                    <div className="d-flex align-items-center">
-                      <span className="me-2" style={{ color: '#006B3C' }}>📄</span>
-                      <span className="fw-medium text-truncate me-2" style={{ maxWidth: '250px', color: '#1E2B24' }}>{att.name}</span>
-                      <span className="badge bg-secondary text-white small">{formatFileSize(att.size)}</span>
+                    <div className="d-flex align-items-center me-2 overflow-hidden">
+                      <span className="me-2 flex-shrink-0" style={{ color: '#006B3C' }}>📄</span>
+                      <span className="fw-medium text-truncate me-2" style={{ maxWidth: '140px', color: '#1E2B24' }}>{att.name}</span>
+                      <span className="badge bg-secondary text-white small flex-shrink-0">{formatFileSize(att.size)}</span>
                     </div>
                     <button
                       type="button"
