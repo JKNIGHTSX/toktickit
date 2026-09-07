@@ -268,7 +268,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
             style={{ backgroundColor: "#FFFFFF", borderColor: "#D1D9D4", borderRadius: "8px" }}
           >
             <div className="card-body p-4">
-              <div className="d-flex align-items-center justify-content-between pb-3 mb-3 border-bottom">
+              <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between pb-3 mb-3 border-bottom gap-2">
                 <div>
                   <h1 className="h4 fw-bold mb-1 font-monospace" style={{ color: "#006B3C" }}>
                     {ticket.ticketNumber}
@@ -421,12 +421,12 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                     return (
                       <div
                         key={att.id}
-                        className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 mb-2 border rounded"
+                        className="list-group-item d-flex flex-column flex-sm-row align-items-sm-center justify-content-between py-2 px-3 mb-2 border rounded gap-2"
                         style={{ borderColor: "#D1D9D4" }}
                       >
-                        <div className="d-flex align-items-center gap-2">
+                        <div className="d-flex align-items-center gap-2 overflow-hidden">
                           <span style={{ fontSize: "18px" }}>📄</span>
-                          <div>
+                          <div className="text-break">
                             <span className="fw-semibold text-dark me-2">{att.originalFileName}</span>
                             <span className="badge bg-secondary text-white small me-2">
                               {formatFileSize(att.fileSizeBytes)}
@@ -475,12 +475,12 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                     {removedAttachments.map((att) => (
                       <div
                         key={att.id}
-                        className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 mb-2 border rounded"
+                        className="list-group-item d-flex flex-column flex-sm-row align-items-sm-center justify-content-between py-2 px-3 mb-2 border rounded gap-2"
                         style={{ backgroundColor: "#F5F7F6", borderColor: "#D1D9D4" }}
                       >
-                        <div className="d-flex align-items-center gap-2">
+                        <div className="d-flex align-items-center gap-2 overflow-hidden">
                           <span style={{ fontSize: "18px", opacity: 0.6 }}>🗑️</span>
-                          <div>
+                          <div className="text-break">
                             <span
                               className="fw-semibold text-muted text-decoration-line-through me-2"
                               style={{ color: "#556B60" }}

@@ -51,19 +51,19 @@ function AppContent() {
         }}
       >
         <div className="container-fluid d-flex align-items-center justify-content-between p-0">
-          <div className="navbar-brand text-white fw-bold mb-0 d-flex align-items-center">
+          <div className="navbar-brand text-white fw-bold mb-0 d-flex align-items-center me-2">
             <span className="me-2" style={{ fontSize: "20px" }} aria-hidden="true">🎫</span>
             <span>
-              TokTickIT <span style={{ opacity: 0.85, fontWeight: 400, fontSize: "14px" }}>IT Service Desk</span>
+              TokTickIT <span className="d-none d-sm-inline" style={{ opacity: 0.85, fontWeight: 400, fontSize: "14px" }}>IT Service Desk</span>
             </span>
           </div>
 
           {/* Active Requester Context Badge / Switcher in Header */}
           {currentRequester ? (
-            <div className="d-flex align-items-center gap-3">
+            <div className="d-flex align-items-center gap-2 gap-sm-3">
               <div className="d-flex align-items-center text-white">
                 <div
-                  className="rounded-circle d-flex align-items-center justify-content-center me-2 fw-bold"
+                  className="rounded-circle d-flex align-items-center justify-content-center me-1 me-sm-2 fw-bold flex-shrink-0"
                   style={{
                     width: "34px",
                     height: "34px",
@@ -88,12 +88,13 @@ function AppContent() {
               </div>
               <button
                 type="button"
-                className="btn btn-sm text-white"
+                className="btn btn-sm text-white px-2 py-1"
                 onClick={clearRequester}
                 style={{
                   borderColor: "rgba(255,255,255,0.4)",
                   backgroundColor: "rgba(0,0,0,0.15)",
                   fontSize: "12px",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Change Requester

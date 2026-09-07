@@ -542,8 +542,8 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
 
           {/* Pagination Footer */}
           <div className="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-3 pt-2">
-            <div className="d-flex align-items-center gap-3">
-              <span className="text-muted small">
+            <div className="d-flex flex-wrap align-items-center justify-content-center justify-content-sm-start gap-2 gap-sm-3">
+              <span className="text-muted small text-center text-sm-start">
                 Showing {startItem} to {endItem} of {pagination.totalItems} tickets
               </span>
               <div className="d-flex align-items-center gap-1">
@@ -570,8 +570,8 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
 
             {/* Pagination Controls */}
             {pagination.totalPages > 1 && (
-              <nav aria-label="Ticket pagination">
-                <ul className="pagination pagination-sm mb-0">
+              <nav aria-label="Ticket pagination" className="mw-100">
+                <ul className="pagination pagination-sm mb-0 flex-wrap justify-content-center">
                   <li className={`page-item ${!pagination.hasPrevPage ? "disabled" : ""}`}>
                     <button
                       type="button"
