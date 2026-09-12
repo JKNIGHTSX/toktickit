@@ -2,8 +2,8 @@
 
 ## 1. Author and Reviewer Information
 
-* **Author**: `<Your Name>` — Student ID: `<Student ID>` — GitHub: `@<your-username>`
-* **Peer Reviewer**: `<Partner Name>` — Student ID: `<Partner Student ID>` — GitHub: `@<partner-username>`
+* **Author**: `Chetsada` — Student ID: `67070501080` — GitHub: `@JKNIGHTSX`
+* **Peer Reviewer**: `Khanatip` — Student ID: `67070501008` — GitHub: `Khanatip112`
 * **Target Integration Branch**: `lab2-staging`
 * **Release Target Branch**: `main`
 
@@ -26,70 +26,76 @@
 
 ### PR-01: Sprint Specification and Contracts
 * **Reviewer Comment**:
-  > "Please ensure the attachment soft removal rule explicitly defines what happens to physical file downloads (HTTP 410) and verify that inactive requesters are prevented from both UI selection and API ticket creation."
+  > "Your files are all good JK! I'll handle Reviewer.md and ai-use.md in issue 8. Let’s get to work!"
 * **Developer Response**:
-  > "Updated `specification.md`, `api-spec.md`, and `tests.md` with explicit rules BR-05 and BR-14, ensuring inactive requesters return HTTP 403 and soft-removed attachment downloads return HTTP 410 Gone with blocked binary streaming."
+  > "Thank you for you review goodluck with Reviewer.md and ai-use.md in your issue8."
 * **Status**: Resolved & Approved
 
 ### PR-02: Development Requester Context
 * **Reviewer Comment**:
-  > *(To be recorded during PR review)*
+  >Migrations and prisma db seed ran smoothly with no duplicates.
+
+API endpoints return correct reference data.
+
+All tests passed (npm test 9/9).
+
+Ready to merge into lab2-staging.
 * **Developer Response**:
-  > *(To be recorded during PR review)*
-* **Status**: Pending
+  > Alright such a good first step.
+* **Status**: Resolved & Approved
 
 ### PR-03: Ticket Creation & Validation
 * **Reviewer Comment**:
-  > *(To be recorded during PR review)*
+  > Everything looks great Let's keep going bro, we're almost done
 * **Developer Response**:
-  > *(To be recorded during PR review)*
-* **Status**: Pending
+  > half way to gooo.
+* **Status**: Resolved & Approved
 
 ### PR-04: My Tickets Dashboard & Filtering
 * **Reviewer Comment**:
-  > *(To be recorded during PR review)*
+  > All My tickets went smoothly! Great job, JK
 * **Developer Response**:
-  > *(To be recorded during PR review)*
-* **Status**: Pending
+  > Thank you khana half way to go.
+* **Status**: Resolved & Approved
 
 ### PR-05: Ticket Detail & Attachment Lifecycle
 * **Reviewer Comment**:
-  > *(To be recorded during PR review)*
+  > Ticket Details look good, JK Let's push forward and finish this
 * **Developer Response**:
-  > *(To be recorded during PR review)*
-* **Status**: Pending
+  > yeah almost there.
+* **Status**: Resolved & Approved
 
 ### PR-06: Responsive & E2E Verification
 * **Reviewer Comment**:
-  > *(To be recorded during PR review)*
+  >Everything looks good! Just one small thing could you check if there are any unused files, like zen-green.png
 * **Developer Response**:
-  > *(To be recorded during PR review)*
-* **Status**: Pending
+  > i check and it say it should have for submission.
+* **Status**: Resolved & Approved
 
 ---
 
 ## 4. Pull Requests Reviewed for Peer Partner
 
-* **Partner PR Link**: `https://github.com/<partner-username>/toktickit/pull/<PR-number>`
-* **Branch**: `feature/<partner-branch-name>`
+* **Partner PR Link**: `https://github.com/Khanatip112/toktickit/pull/25`
+* **Branch**: `feature/6-tests`
 * **My Review Comment**:
-  > *(To be recorded during partner code review)*
+  > All test are pass. Your work almost there.
 * **Partner's Response**:
-  > *(To be recorded during partner code review)*
+  > Thanks for the review, JK Hit me up if you run into token limit we can figure it out together.
 * **Final Verdict**: Approved / Changes Requested
 
 ---
 
 ## 5. Release Pull Request (`lab2-staging` -> `main`)
 
-* **Release PR Link**: `https://github.com/<your-username>/toktickit/pull/<Release-PR-number>`
+* **Release PR Link**: `https://github.com/JKNIGHTSX/toktickit/pull/35`
 * **Release Checklist**:
-  * [ ] All 6 feature PRs merged into `lab2-staging`.
-  * [ ] All automated unit, API, UI, and E2E tests pass from clean checkout.
-  * [ ] Zero database migration conflicts.
-  * [ ] Visual inspection confirmed on Desktop, Tablet, and Mobile.
-  * [ ] Final peer approval signed off.
+  * [] All 6 feature PRs merged into `lab2-staging`.
+  * [] All automated unit, API, UI, and E2E tests pass from clean checkout.
+  * [] Zero database migration conflicts.
+  * [] Visual inspection confirmed on Desktop, Tablet, and Mobile.
+  * [] Final peer approval signed off.
 * **Reviewer Sign-off**:
-  * Reviewer Name: `<Partner Name>`
-  * Date: `YYYY-MM-DD`
+  * Reviewer Name: `Khanatip`
+  * Date: `2026-09-7`
   * Verdict: Approved for Main Merge
