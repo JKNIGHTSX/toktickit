@@ -11,17 +11,122 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Issue 3 — Create and seed IT request categories
-// Define a Category model with:
-//   id        Int      @id @default(autoincrement())
-//   name      String   @unique
-//   createdAt DateTime @default(now())
-// Then run:  npx prisma migrate dev --name init
+// 1. Development Requester Model (Lab 2 Issue 1)
 // ---------------------------------------------------------------------------
-// Issue 3 — Category model
+model RequesterUser {
+  id                 Int          @id @default(autoincrement())
+  email              String       @unique
+  name               String
+  department         String?
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  tickets            Ticket[]
+  removedAttachments Attachment[] @relation("RemovedByRequester")
+
+  @@index([isActive])
+  @@map("requester_users")
+}
+
+// ---------------------------------------------------------------------------
+// 2. Reference Categories (Lab 2 Issue 2 enhancement)
 // ---------------------------------------------------------------------------
 model Category {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  tickets     Ticket[]
+
+  @@map("categories")
 }
+
+// ---------------------------------------------------------------------------
+// 3. Reference Related Systems (Lab 2 Issue 2)
+// ---------------------------------------------------------------------------
+model RelatedSystem {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  tickets     Ticket[]
+
+  @@map("related_systems")
+}
+
+// ---------------------------------------------------------------------------
+// 4. Ticket Model (Lab 2 Issue 3)
+// ---------------------------------------------------------------------------
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+model Ticket {
+  id                 Int           @id @default(autoincrement())
+  ticketNumber       String        @unique
+  requesterId        Int
+  categoryId         Int
+  relatedSystemId    Int
+  summary            String        @db.VarChar(150)
+  description        String        @db.Text
+  requestedPriority  PriorityLevel @default(MEDIUM)
+  itPriority         PriorityLevel?
+  status             TicketStatus  @default(NEW)
+  ticketOwnerName    String?
+  resolutionSummary  String?       @db.Text
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  requester          RequesterUser @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  category           Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedSystem      RelatedSystem @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+  attachments        Attachment[]
+
+  @@index([requesterId, createdAt(sort: Desc)])
+  @@index([ticketNumber])
+  @@index([categoryId])
+  @@index([status])
+  @@map("tickets")
+}
+
+// ---------------------------------------------------------------------------
+// 5. Attachment Model (Lab 2 Issue 7)
+// ---------------------------------------------------------------------------
+model Attachment {
+  id                   Int            @id @default(autoincrement())
+  ticketId             Int
+  originalFileName     String
+  storedFileName       String         @unique
+  fileMimeType         String
+  fileSizeBytes        Int
+  storagePath          String
+  isRemoved            Boolean        @default(false)
+  removedReason        String?        @db.VarChar(255)
+  removedAt            DateTime?
+  removedByRequesterId Int?
+  createdAt            DateTime       @default(now())
+
+  ticket               Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  removedByRequester   RequesterUser? @relation("RemovedByRequester", fields: [removedByRequesterId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, isRemoved])
+  @@map("attachments")
+}
+
