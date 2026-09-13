@@ -1,14 +1,44 @@
-# dependencies
+# Dependencies
 node_modules/
-# env & secrets
+.pnpm-store/
+
+# Environment Variables & Secrets
 .env
 *.env
 !.env.example
-# build output
+
+# Build Outputs
 dist/
 build/
-# prisma
+.vite/
+*.tsbuildinfo
+
+# File Uploads & Local Scratch
+uploads/
+server/uploads/
+scratch/
+server/scratch/
+tatus
+
+# Testing & E2E Reports
+test-results/
+playwright-report/
+blob-report/
+coverage/
+.nyc_output/
+
+# Database & Prisma Local Storage
 server/prisma/*.db
-# logs & OS
+*.sqlite
+*.sqlite-journal
+*.db-journal
+*.db-shm
+*.db-wal
+
+# IDE, OS, & System Logs
+.vscode/
+.idea/
+*.swp
 *.log
 .DS_Store
+Thumbs.db
