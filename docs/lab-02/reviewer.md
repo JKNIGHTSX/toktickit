@@ -14,11 +14,11 @@
 | PR # | Feature Branch | Target Branch | Scope Summary | Reviewer Verdict | Review Date |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | PR-01 | `feature/lab2-spec-and-contracts` | `lab2-staging` | Lab 2 Sprint Specification, API Contract, UI Spec, and Test Plan | Approved | 2026-09-05 |
-| PR-02 | `feature/lab2-dev-requester-context` | `lab2-staging` | Dev Requester model, seed data, selector API & screen, context state | Pending Review | |
-| PR-03 | `feature/lab2-ticket-creation` | `lab2-staging` | Ticket schema, Create Ticket API, form validation, number generator | Pending Review | |
-| PR-04 | `feature/lab2-my-tickets` | `lab2-staging` | My Tickets list API, search/filter/sort/paginate, responsive table/cards | Pending Review | |
-| PR-05 | `feature/lab2-ticket-detail-attachments` | `lab2-staging` | Ticket detail view, attachment upload, download, soft removal (`410 Gone`) | Pending Review | |
-| PR-06 | `feature/lab2-responsive-e2e-integration` | `lab2-staging` | Zen Green styling audit, Playwright E2E suite, responsive screenshots | Pending Review | |
+| PR-02 | `feature/lab2-dev-requester-context` | `lab2-staging` | Dev Requester model, seed data, selector API & screen, context state | Approved | 2026-09-05|
+| PR-03 | `feature/lab2-ticket-creation` | `lab2-staging` | Ticket schema, Create Ticket API, form validation, number generator | Approved | 2026-09-06|
+| PR-04 | `feature/lab2-my-tickets` | `lab2-staging` | My Tickets list API, search/filter/sort/paginate, responsive table/cards | Approved |2026-09-06|
+| PR-05 | `feature/lab2-ticket-detail-attachments` | `lab2-staging` | Ticket detail view, attachment upload, download, soft removal (`410 Gone`) | Approved | 2026-09-06|
+| PR-06 | `feature/lab2-responsive-e2e-integration` | `lab2-staging` | Zen Green styling audit, Playwright E2E suite, responsive screenshots | Approved | 2026-09-06|
 
 ---
 
