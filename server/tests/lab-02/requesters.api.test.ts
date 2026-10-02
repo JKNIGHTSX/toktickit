@@ -54,7 +54,7 @@ describe("Lab 2 — Issue #1: Development Requester API & Seed Tests", () => {
   describe("Database Seed & Integrity Check", () => {
     it("has inactive requesters stored in the database even though excluded from API", async () => {
       const prisma = getPrisma();
-      const inactiveDbUser = await prisma.requesterUser.findUnique({
+      const inactiveDbUser = await prisma.user.findUnique({
         where: { email: "inactive.user@toktickit.local" },
       });
 
@@ -63,9 +63,9 @@ describe("Lab 2 — Issue #1: Development Requester API & Seed Tests", () => {
       expect(inactiveDbUser?.isActive).toBe(false);
     });
 
-    it("maintains unique email constraint on RequesterUser", async () => {
+    it("maintains unique email constraint on User", async () => {
       const prisma = getPrisma();
-      const count = await prisma.requesterUser.count({
+      const count = await prisma.user.count({
         where: { email: "jennifer.anderson@toktickit.local" },
       });
       expect(count).toBe(1);

@@ -17,8 +17,8 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
     const prisma = getPrisma();
 
     // Fetch 2 active requesters
-    const requesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const requesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
       orderBy: { id: "asc" },
       take: 2,
     });

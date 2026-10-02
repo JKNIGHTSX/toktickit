@@ -109,8 +109,8 @@ app.get("/api/related-systems", async (_req: Request, res: Response) => {
 app.get("/api/requesters", async (_req: Request, res: Response) => {
   try {
     const prisma = getPrisma();
-    const requesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const requesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -148,7 +148,7 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
     }
 
     // Verify requester exists and is active
-    const requester = await prisma.requesterUser.findUnique({
+    const requester = await prisma.user.findUnique({
       where: { id: requesterId },
     });
 
@@ -850,7 +850,7 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
         isRemoved: true,
         removedAt: new Date(),
         removedReason: reason,
-        removedByRequesterId: requesterId,
+        removedByUserId: requesterId,
       },
     });
 
