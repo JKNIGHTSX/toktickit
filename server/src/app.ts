@@ -1,11 +1,15 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import session from "express-session";
+import cookieParser from "cookie-parser";
+import bcrypt from "bcryptjs";
 import { getPrisma } from "./prisma.js";
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { validateTicketInput } from "./utils/validators.js";
+import { validatePasswordPolicy } from "./utils/password-policy.js";
 import {
   validateAttachmentFile,
   generateStoredFileName,
@@ -13,10 +17,35 @@ import {
   MAX_FILE_SIZE_BYTES,
 } from "./utils/attachment-validator.js";
 
+declare module "express-session" {
+  interface SessionData {
+    userId?: number;
+    role?: string;
+  }
+}
+
 export const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "toktickit_session_secret_key_2026_lab3",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 // Setup safe local disk storage directory for attachments
 const uploadsDir = path.join(process.cwd(), "uploads", "attachments");
@@ -35,6 +64,274 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 app.get("/api/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", service: "TokTickIT API" });
+});
+
+// ---------------------------------------------------------------------------
+// Authentication Endpoints (Lab 3 Issue #3)
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/login
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {};
+
+    if (!email || !password || typeof email !== "string" || typeof password !== "string") {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const cleanEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: cleanEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (!user) {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(401).json({
+        error: "Account is inactive. Please contact an Administrator",
+        code: "ACCOUNT_INACTIVE",
+      });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    req.session.userId = user.id;
+    req.session.role = user.role;
+
+    res.status(200).json({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          department: user.department,
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+          isActive: user.isActive,
+        },
+      },
+      message: "Login successful",
+    });
+  } catch (_err) {
+    console.error("POST /api/auth/login error:", _err);
+    res.status(500).json({
+      error: "Internal server error during authentication",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// POST /api/auth/logout
+app.post("/api/auth/logout", (req: Request, res: Response) => {
+  req.session.destroy((_err) => {
+    res.clearCookie("connect.sid");
+    res.status(200).json({
+      message: "Logged out successfully",
+    });
+  });
+});
+
+// GET /api/auth/me
+app.get("/api/auth/me", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.isActive) {
+      req.session.destroy(() => {});
+      res.clearCookie("connect.sid");
+      res.status(401).json({
+        error: "Account is inactive or user not found",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+        isActive: user.isActive,
+      },
+    });
+  } catch (_err) {
+    res.status(500).json({
+      error: "Internal server error retrieving user profile",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// POST /api/auth/change-password
+app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [
+          { field: "currentPassword", message: "Current password is required" },
+          { field: "newPassword", message: "New password is required" },
+          { field: "confirmPassword", message: "Confirm password is required" },
+        ].filter((d) => !req.body?.[d.field]),
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [
+          { field: "confirmPassword", message: "New password and confirmation do not match" },
+        ],
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user || !user.isActive) {
+      res.status(401).json({
+        error: "User not found or account inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!passwordMatches) {
+      res.status(400).json({
+        error: "Current password is incorrect",
+        code: "INVALID_CURRENT_PASSWORD",
+        details: [
+          { field: "currentPassword", message: "Current password is incorrect" },
+        ],
+      });
+      return;
+    }
+
+    const policyResult = validatePasswordPolicy(newPassword);
+    if (!policyResult.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [
+          {
+            field: "newPassword",
+            message: "Password must contain at least 8 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character",
+          },
+        ],
+      });
+      return;
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    res.status(200).json({
+      message: "Password changed successfully. You may now access the application.",
+    });
+  } catch (_err) {
+    console.error("POST /api/auth/change-password error:", _err);
+    res.status(500).json({
+      error: "Internal server error changing password",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Mandatory First-Login Password Change Intercept Middleware
+// ---------------------------------------------------------------------------
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  const allowedUnauthenticatedOrAuthPaths = [
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/auth/change-password",
+    "/api/categories",
+    "/api/related-systems",
+    "/api/requesters",
+  ];
+
+  if (allowedUnauthenticatedOrAuthPaths.includes(req.path)) {
+    return next();
+  }
+
+  const userId = req.session?.userId;
+  if (userId) {
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user && user.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+  }
+
+  next();
 });
 
 // Fallback seed data for development when database container is offline

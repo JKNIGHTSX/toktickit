@@ -32,9 +32,6 @@ export async function checkSystem(): Promise<SystemStatus> {
   return { online: true, categories };
 }
 
-// ---------------------------------------------------------------------------
-// Lab 2 — Issue 1: Fetch active Development Requesters
-// ---------------------------------------------------------------------------
 export interface Requester {
   id: number;
   name: string;
@@ -43,8 +40,79 @@ export interface Requester {
   isActive: boolean;
 }
 
+export type UserRole = "REQUESTER" | "IT_STAFF" | "ADMINISTRATOR";
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  department?: string | null;
+  role: UserRole;
+  mustChangePassword: boolean;
+  isActive: boolean;
+}
+
+export async function loginApi(email: string, password: string): Promise<AuthUser> {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const errorObj: any = new Error(data?.error || "Invalid email or password");
+    errorObj.code = data?.code;
+    throw errorObj;
+  }
+
+  return data.data.user;
+}
+
+export async function logoutApi(): Promise<void> {
+  await fetch(`${API_URL}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  const res = await fetch(`${API_URL}/api/auth/me`, {
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const data = await res.json();
+  return data.data;
+}
+
+export async function changePasswordApi(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const errorObj: any = new Error(data?.error || "Failed to change password");
+    errorObj.code = data?.code;
+    errorObj.details = data?.details;
+    throw errorObj;
+  }
+}
+
 export async function fetchRequesters(): Promise<Requester[]> {
-  const res = await fetch(`${API_URL}/api/requesters`);
+  const res = await fetch(`${API_URL}/api/requesters`, { credentials: "include" });
   if (!res.ok) {
     let errorMsg = "Failed to fetch development requesters";
     try {
