@@ -12,9 +12,16 @@ vi.mock('../../src/api', () => ({
   createTicket: vi.fn()
 }));
 
+import * as AuthModule from '../../src/context/AuthContext';
+
 // Mock useRequester hook
 vi.mock('../../src/context/RequesterContext', () => ({
   useRequester: vi.fn()
+}));
+
+// Mock useAuth hook
+vi.mock('../../src/context/AuthContext', () => ({
+  useAuth: vi.fn()
 }));
 
 const mockRequester = {
@@ -36,6 +43,23 @@ const mockSystems = [
 ];
 
 function setupRequesterMock() {
+  (AuthModule.useAuth as any).mockReturnValue({
+    user: {
+      id: mockRequester.id,
+      email: mockRequester.email,
+      fullName: mockRequester.name,
+      role: 'REQUESTER',
+      department: mockRequester.department,
+      mustChangePassword: false
+    },
+    isAuthenticated: true,
+    isLoading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    changePassword: vi.fn(),
+    checkAuth: vi.fn()
+  });
   (RequesterModule.useRequester as any).mockReturnValue({
     currentRequester: mockRequester,
     requesters: [mockRequester],

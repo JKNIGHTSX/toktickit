@@ -8,7 +8,7 @@ import {
   PriorityLevel,
   TicketStatus,
 } from "../api.js";
-import { useRequester } from "../context/RequesterContext.js";
+import { useAuth } from "../context/AuthContext.js";
 
 interface MyTicketsProps {
   onCreateTicket?: () => void;
@@ -16,7 +16,7 @@ interface MyTicketsProps {
 }
 
 export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
-  const { currentRequester } = useRequester();
+  const { user } = useAuth();
 
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMetadata>({
@@ -64,7 +64,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
 
   // Fetch Tickets when filters / pagination / requester change
   const loadTickets = useCallback(async () => {
-    if (!currentRequester) return;
+    if (!user) return;
 
     setLoading(true);
     setError(null);
@@ -72,7 +72,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
     try {
       const res = await fetchTickets(
         {
-          requesterId: currentRequester.id,
+          requesterId: user.id,
           page,
           pageSize,
           search: search.trim() || undefined,
@@ -83,7 +83,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
           sortBy,
           sortOrder,
         },
-        currentRequester.id
+        user.id
       );
 
       setTickets(res.data);
@@ -94,7 +94,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
       setLoading(false);
     }
   }, [
-    currentRequester,
+    user,
     page,
     pageSize,
     search,

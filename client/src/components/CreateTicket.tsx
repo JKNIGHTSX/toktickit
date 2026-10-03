@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
 import { 
   fetchCategories, 
   fetchRelatedSystems, 
@@ -27,7 +27,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_FILE_COUNT = 5;
 
 export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess }) => {
-  const { currentRequester } = useRequester();
+  const { user } = useAuth();
 
   // Reference Data State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -172,8 +172,8 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
     setSubmitSuccess(null);
     setSubmitError(null);
 
-    if (!currentRequester) {
-      setSubmitError('Please select a requester identity before submitting a ticket.');
+    if (!user) {
+      setSubmitError('Please sign in before submitting a ticket.');
       return;
     }
 
@@ -190,14 +190,14 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
         requestedPriority,
         categoryId: parseInt(categoryId, 10),
         relatedSystemId: parseInt(relatedSystemId, 10),
-        requesterId: currentRequester.id
-      }, currentRequester.id);
+        requesterId: user.id
+      }, user.id);
 
       // Upload queued attachments sequentially if any
       if (attachments.length > 0) {
         for (const att of attachments) {
           try {
-            await uploadAttachment(ticket.id, att.file, currentRequester.id);
+            await uploadAttachment(ticket.id, att.file, user.id);
           } catch (uploadErr: any) {
             console.error(`Failed to upload attachment ${att.name}:`, uploadErr);
           }
@@ -307,7 +307,7 @@ export const CreateTicket: React.FC<CreateTicketProps> = ({ onCancel, onSuccess 
                 <input 
                   type="text" 
                   className="form-control form-control-sm bg-white" 
-                  value={currentRequester ? `${currentRequester.name} (${currentRequester.email})` : 'Not Selected'} 
+                  value={user ? `${user.name || user.email} (${user.email})` : 'Not Selected'} 
                   disabled 
                   readOnly 
                   style={{ color: '#556B60' }}

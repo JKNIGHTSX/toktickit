@@ -51,20 +51,11 @@ async function selectRequester(page: any) {
         return;
     }
 
-    const requesterSelect = page.locator("#dev-requester-select");
-    await expect(requesterSelect).toBeVisible({ timeout: 10000 });
-
-    const options = await requesterSelect.locator("option").count();
-    expect(options).toBeGreaterThan(1);
-
-    await requesterSelect.selectOption({ index: 1 });
-
-    const continueButton = page.getByRole("button", {
-        name: /continue/i,
-    });
-
-    await expect(continueButton).toBeEnabled();
-    await continueButton.click();
+    const emailInput = page.getByLabel(/email/i);
+    await expect(emailInput).toBeVisible({ timeout: 10000 });
+    await emailInput.fill("jennifer.anderson@toktickit.local");
+    await page.locator("#passwordInput").fill("Password123!");
+    await page.getByRole("button", { name: /sign in/i }).click();
 
     await expect(myTicketsTab).toBeVisible({ timeout: 10000 });
 }
