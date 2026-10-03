@@ -4,12 +4,12 @@ import React from "react";
 import { AuthProvider } from "../../src/context/AuthContext.js";
 import { ChangePassword } from "../../src/components/ChangePassword.js";
 
-global.fetch = vi.fn();
+(globalThis as any).fetch = vi.fn();
 
 describe("ChangePassword UI Component (Lab 3 — Issue #3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (global.fetch as any).mockImplementation((url: string) => {
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/auth/me")) {
         return Promise.resolve({
           ok: false,
