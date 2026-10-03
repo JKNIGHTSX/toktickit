@@ -51,6 +51,12 @@ async function selectRequester(page: any) {
         return;
     }
 
+    // Lab 3: Expand Dev Requester section if collapsed inside <details>
+    const summary = page.locator("summary", { hasText: "Development Requester Context Selector" });
+    if (await summary.count() > 0) {
+        await summary.click();
+    }
+
     const requesterSelect = page.locator("#dev-requester-select");
     await expect(requesterSelect).toBeVisible({ timeout: 10000 });
 

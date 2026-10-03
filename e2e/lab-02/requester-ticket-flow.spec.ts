@@ -6,6 +6,11 @@ test.describe("Lab 2 - Requester Ticket Flow", () => {
     await page.goto("/");
 
     // 2. Select Development Requester
+    const summary = page.locator("summary", { hasText: "Development Requester Context Selector" });
+    if (await summary.count() > 0) {
+      await summary.click();
+    }
+
     await expect(
       page.getByText("Select Development Requester")
     ).toBeVisible();
