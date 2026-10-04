@@ -6,16 +6,22 @@ import { ChangePassword } from "./components/ChangePassword.js";
 import { CreateTicket } from "./components/CreateTicket.js";
 import { MyTickets } from "./components/MyTickets.js";
 import { TicketDetail } from "./components/TicketDetail.js";
+import { StaffTicketQueue } from "./components/StaffTicketQueue.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
 function AppContent() {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
 
+  const isStaffOrAdmin = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
+
   const [state, setState] = useState<UiState>("idle");
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail">("create-ticket");
+  // IT Staff / Admin default to ticket queue; Requesters default to create-ticket
+  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail" | "staff-queue">(
+    isStaffOrAdmin ? "staff-queue" : "create-ticket"
+  );
   const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
 
   async function handleCheck() {
@@ -267,7 +273,45 @@ function AppContent() {
           </div>
         ) : (
           <div>
-            {/* Tab Navigation for Logged-In User / Requester */}
+            {/* Role-specific Tab Navigation */}
+          {isStaffOrAdmin ? (
+            /* ── IT Staff / Administrator Navigation ── */
+            <div>
+              <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
+                <li className="nav-item">
+                  <button
+                    className={`nav-link ${view !== "ticket-detail" ? "active fw-bold" : ""}`}
+                    id="nav-ticket-queue"
+                    onClick={() => setView("staff-queue")}
+                    style={{
+                      color: view !== "ticket-detail" ? "#006B3C" : "#556B60",
+                      backgroundColor: view !== "ticket-detail" ? "#EAF6EF" : "transparent",
+                      borderColor: view !== "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                    }}
+                  >
+                    🗂 Ticket Queue
+                  </button>
+                </li>
+              </ul>
+
+              {view === "ticket-detail" && selectedTicketId !== null ? (
+                <TicketDetail
+                  ticketId={selectedTicketId}
+                  onBack={() => setView("staff-queue")}
+                />
+              ) : (
+                <StaffTicketQueue
+                  onSelectTicket={(id) => {
+                    setSelectedTicketId(id);
+                    setView("ticket-detail");
+                  }}
+                  onCreateTicket={() => setView("create-ticket")}
+                />
+              )}
+            </div>
+          ) : (
+            /* ── Requester Navigation ── */
+            <div>
             <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
               <li className="nav-item">
                 <button
@@ -315,7 +359,8 @@ function AppContent() {
                 onBack={() => setView("my-tickets")}
               />
             )}
-          </div>
+            </div>
+          )}
         )}
       </main>
     </div>
