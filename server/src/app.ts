@@ -670,9 +670,12 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       }
     }
 
-    // Priority & Status Enum filters
+    // Priority & Status Enum filters (includes all Lab 3 statuses)
     const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-    const validStatuses = ["NEW", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED", "CANCELLED"];
+    const validStatuses = [
+      "NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER",
+      "RESOLVED", "CLOSED", "REOPENED", "CANCELLED",
+    ];
 
     if (req.query.requestedPriority && validPriorities.includes(String(req.query.requestedPriority))) {
       where.requestedPriority = String(req.query.requestedPriority);
@@ -686,8 +689,27 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       where.status = String(req.query.status);
     }
 
-    // 4. Build sorting
-    const validSortFields = ["createdAt", "ticketNumber", "summary", "status", "requestedPriority", "updatedAt"];
+    // assignedTo filter — IT Staff / Admin only (BR-11)
+    // Values: "UNASSIGNED" | "ME" | "<userId number>"
+    if (sessionRole === "IT_STAFF" || sessionRole === "ADMINISTRATOR") {
+      const assignedTo = req.query.assignedTo;
+      if (assignedTo !== undefined && assignedTo !== "") {
+        const assignedToStr = String(assignedTo).trim();
+        if (assignedToStr === "UNASSIGNED") {
+          where.ownerId = null;
+        } else if (assignedToStr === "ME" && sessionUserId) {
+          where.ownerId = sessionUserId;
+        } else {
+          const staffId = parseInt(assignedToStr, 10);
+          if (!isNaN(staffId) && staffId > 0) {
+            where.ownerId = staffId;
+          }
+        }
+      }
+    }
+
+    // 4. Build sorting (itPriority added as valid sort field for IT Staff queue)
+    const validSortFields = ["createdAt", "ticketNumber", "summary", "status", "requestedPriority", "itPriority", "updatedAt"];
     const sortBy = validSortFields.includes(String(req.query.sortBy)) ? String(req.query.sortBy) : "createdAt";
     const sortOrder = String(req.query.sortOrder).toLowerCase() === "asc" ? "asc" : "desc";
 
@@ -700,6 +722,8 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     const totalItems = await prisma.ticket.count({ where });
 
     const skip = (page - 1) * pageSize;
+    const isStaffOrAdmin = sessionRole === "IT_STAFF" || sessionRole === "ADMINISTRATOR";
+
     const tickets = await prisma.ticket.findMany({
       where,
       orderBy,
@@ -716,6 +740,13 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
           where: { isRemoved: false },
           select: { id: true },
         },
+        // Include requester & owner for IT Staff / Admin queue view
+        ...(isStaffOrAdmin
+          ? {
+              requester: { select: { id: true, name: true, email: true } },
+              owner: { select: { id: true, name: true, role: true } },
+            }
+          : {}),
       },
     });
 
@@ -725,7 +756,7 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     const hasPrevPage = page > 1 && totalPages > 0;
 
     // 7. Map payload items
-    const data = tickets.map((t) => ({
+    const data = tickets.map((t: any) => ({
       id: t.id,
       ticketNumber: t.ticketNumber,
       requesterId: t.requesterId,
@@ -739,6 +770,13 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       attachmentCount: t.attachments.length,
+      // IT Staff / Admin-only enriched fields
+      ...(isStaffOrAdmin
+        ? {
+            requester: t.requester,
+            owner: t.owner ?? null,
+          }
+        : {}),
     }));
 
     res.status(200).json({

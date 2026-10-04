@@ -149,7 +149,15 @@ export async function fetchRelatedSystems(): Promise<RelatedSystem[]> {
 // Lab 2 — Issue 3: Ticket Creation API
 // ---------------------------------------------------------------------------
 export type PriorityLevel = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-export type TicketStatus = "NEW" | "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "CANCELLED";
+export type TicketStatus =
+  | "NEW"
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "WAITING_FOR_REQUESTER"
+  | "RESOLVED"
+  | "CLOSED"
+  | "REOPENED"
+  | "CANCELLED";
 
 export interface CreateTicketPayload {
   requesterId: number;
@@ -197,6 +205,80 @@ export interface ApiValidationError {
   error: string;
   code: string;
   details?: { field: string; message: string }[];
+}
+
+// ---------------------------------------------------------------------------
+// Lab 3 — Issue #5: IT Staff Ticket Queue types
+// ---------------------------------------------------------------------------
+export interface TicketQueueItem {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  requester: { id: number; name: string; email: string } | null;
+  category: { id: number; name: string };
+  relatedSystem: { id: number; name: string };
+  summary: string;
+  requestedPriority: PriorityLevel;
+  itPriority: PriorityLevel | null;
+  status: TicketStatus;
+  owner: { id: number; name: string; role: string } | null;
+  ticketOwnerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachmentCount: number;
+}
+
+export type AssignedToFilter = "UNASSIGNED" | "ME" | number | "";
+
+export interface FetchQueueParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  categoryId?: number;
+  requestedPriority?: PriorityLevel;
+  itPriority?: PriorityLevel;
+  status?: TicketStatus;
+  assignedTo?: AssignedToFilter;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export async function fetchStaffQueue(
+  params: FetchQueueParams = {}
+): Promise<{ data: TicketQueueItem[]; pagination: PaginationMetadata }> {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  if (params.search !== undefined && params.search.trim() !== "") {
+    query.set("search", params.search.trim());
+  }
+  if (params.categoryId !== undefined) query.set("categoryId", String(params.categoryId));
+  if (params.requestedPriority !== undefined) query.set("requestedPriority", params.requestedPriority);
+  if (params.itPriority !== undefined) query.set("itPriority", params.itPriority);
+  if (params.status !== undefined) query.set("status", params.status);
+  if (params.assignedTo !== undefined && params.assignedTo !== "") {
+    query.set("assignedTo", String(params.assignedTo));
+  }
+  if (params.sortBy !== undefined) query.set("sortBy", params.sortBy);
+  if (params.sortOrder !== undefined) query.set("sortOrder", params.sortOrder);
+
+  const url = `${API_URL}/api/tickets?${query.toString()}`;
+  const res = await fetch(url, { credentials: "include" });
+
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch ticket queue";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorMsg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return res.json();
 }
 
 export async function createTicket(

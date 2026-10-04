@@ -10,6 +10,18 @@ export const Login: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
 
+  const formatAuthError = (err: any): string => {
+    const code = err?.code;
+    switch (code) {
+      case "ACCOUNT_INACTIVE":
+        return "Account is inactive. Please contact an Administrator.";
+      case "INVALID_CREDENTIALS":
+        return "Invalid email or password. Please try again.";
+      default:
+        return err?.message || "Invalid email or password. Please try again.";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
@@ -23,7 +35,7 @@ export const Login: React.FC = () => {
     try {
       await login(email.trim(), password);
     } catch (err: any) {
-      setErrorMessage(err?.message || "Invalid email or password. Please try again.");
+      setErrorMessage(formatAuthError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -71,11 +83,14 @@ export const Login: React.FC = () => {
               <div
                 className="alert alert-danger py-2 px-3 mb-3 small d-flex align-items-center"
                 role="alert"
+                aria-live="assertive"
+                aria-atomic="true"
                 style={{
                   borderRadius: "8px",
                   backgroundColor: "#FDF2F2",
                   borderColor: "#F8B4B4",
                   color: "#9B1C1C",
+                  fontWeight: 600,
                 }}
               >
                 <span className="me-2" aria-hidden="true">⚠️</span>
