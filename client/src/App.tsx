@@ -274,93 +274,94 @@ function AppContent() {
         ) : (
           <div>
             {/* Role-specific Tab Navigation */}
-          {isStaffOrAdmin ? (
-            /* ── IT Staff / Administrator Navigation ── */
-            <div>
-              <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
-                <li className="nav-item">
-                  <button
-                    className={`nav-link ${view !== "ticket-detail" ? "active fw-bold" : ""}`}
-                    id="nav-ticket-queue"
-                    onClick={() => setView("staff-queue")}
-                    style={{
-                      color: view !== "ticket-detail" ? "#006B3C" : "#556B60",
-                      backgroundColor: view !== "ticket-detail" ? "#EAF6EF" : "transparent",
-                      borderColor: view !== "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+            {isStaffOrAdmin ? (
+              /* ── IT Staff / Administrator Navigation ── */
+              <div>
+                <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view !== "ticket-detail" ? "active fw-bold" : ""}`}
+                      id="nav-ticket-queue"
+                      onClick={() => setView("staff-queue")}
+                      style={{
+                        color: view !== "ticket-detail" ? "#006B3C" : "#556B60",
+                        backgroundColor: view !== "ticket-detail" ? "#EAF6EF" : "transparent",
+                        borderColor: view !== "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                      }}
+                    >
+                      🗂 Ticket Queue
+                    </button>
+                  </li>
+                </ul>
+
+                {view === "ticket-detail" && selectedTicketId !== null ? (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => setView("staff-queue")}
+                  />
+                ) : (
+                  <StaffTicketQueue
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
                     }}
-                  >
-                    🗂 Ticket Queue
-                  </button>
-                </li>
-              </ul>
+                    onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
+              </div>
+            ) : (
+              /* ── Requester Navigation ── */
+              <div>
+                <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "create-ticket" ? "active fw-bold" : ""}`}
+                      onClick={() => setView("create-ticket")}
+                      style={{
+                        color: view === "create-ticket" ? "#006B3C" : "#556B60",
+                        backgroundColor: view === "create-ticket" ? "#EAF6EF" : "transparent",
+                        borderColor: view === "create-ticket" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                      }}
+                    >
+                      + Create Ticket
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "my-tickets" ? "active fw-bold" : ""}`}
+                      onClick={() => setView("my-tickets")}
+                      style={{
+                        color: view === "my-tickets" ? "#006B3C" : "#556B60",
+                        backgroundColor: view === "my-tickets" ? "#EAF6EF" : "transparent",
+                        borderColor: view === "my-tickets" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                      }}
+                    >
+                      My Tickets
+                    </button>
+                  </li>
+                </ul>
 
-              {view === "ticket-detail" && selectedTicketId !== null ? (
-                <TicketDetail
-                  ticketId={selectedTicketId}
-                  onBack={() => setView("staff-queue")}
-                />
-              ) : (
-                <StaffTicketQueue
-                  onSelectTicket={(id) => {
-                    setSelectedTicketId(id);
-                    setView("ticket-detail");
-                  }}
-                  onCreateTicket={() => setView("create-ticket")}
-                />
-              )}
-            </div>
-          ) : (
-            /* ── Requester Navigation ── */
-            <div>
-            <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
-              <li className="nav-item">
-                <button
-                  className={`nav-link ${view === "create-ticket" ? "active fw-bold" : ""}`}
-                  onClick={() => setView("create-ticket")}
-                  style={{
-                    color: view === "create-ticket" ? "#006B3C" : "#556B60",
-                    backgroundColor: view === "create-ticket" ? "#EAF6EF" : "transparent",
-                    borderColor: view === "create-ticket" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                  }}
-                >
-                  + Create Ticket
-                </button>
-              </li>
-              <li className="nav-item">
-                <button
-                  className={`nav-link ${view === "my-tickets" ? "active fw-bold" : ""}`}
-                  onClick={() => setView("my-tickets")}
-                  style={{
-                    color: view === "my-tickets" ? "#006B3C" : "#556B60",
-                    backgroundColor: view === "my-tickets" ? "#EAF6EF" : "transparent",
-                    borderColor: view === "my-tickets" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                  }}
-                >
-                  My Tickets
-                </button>
-              </li>
-            </ul>
-
-            {view === "create-ticket" && (
-              <CreateTicket onCancel={() => setView("my-tickets")} />
+                {view === "create-ticket" && (
+                  <CreateTicket onCancel={() => setView("my-tickets")} />
+                )}
+                {view === "my-tickets" && (
+                  <MyTickets
+                    onCreateTicket={() => setView("create-ticket")}
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                  />
+                )}
+                {view === "ticket-detail" && selectedTicketId !== null && (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => setView("my-tickets")}
+                  />
+                )}
+              </div>
             )}
-            {view === "my-tickets" && (
-              <MyTickets
-                onCreateTicket={() => setView("create-ticket")}
-                onSelectTicket={(id) => {
-                  setSelectedTicketId(id);
-                  setView("ticket-detail");
-                }}
-              />
-            )}
-            {view === "ticket-detail" && selectedTicketId !== null && (
-              <TicketDetail
-                ticketId={selectedTicketId}
-                onBack={() => setView("my-tickets")}
-              />
-            )}
-            </div>
-          )}
+          </div>
         )}
       </main>
     </div>

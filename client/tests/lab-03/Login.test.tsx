@@ -123,7 +123,10 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/account is inactive/i)).toBeInTheDocument();
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/account is inactive/i);
+      expect(alert).toHaveTextContent(/contact an administrator/i);
+      expect(alert).toHaveAttribute("aria-live", "assertive");
     });
   });
 
