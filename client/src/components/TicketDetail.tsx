@@ -9,7 +9,7 @@ import {
   PriorityLevel,
   TicketStatus,
 } from "../api.js";
-import { useRequester } from "../context/RequesterContext.js";
+import { useAuth } from "../context/AuthContext.js";
 
 interface TicketDetailProps {
   ticketId: string | number;
@@ -21,7 +21,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_ACTIVE_ATTACHMENTS = 5;
 
 export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
-  const { currentRequester } = useRequester();
+  const { user } = useAuth();
 
   const [ticket, setTicket] = useState<TicketDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -40,12 +40,12 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [isUploading, setIsUploading] = useState<boolean>(false);
 
   const loadTicket = () => {
-    if (!currentRequester) return;
+    if (!user) return;
 
     setLoading(true);
     setError(null);
 
-    fetchTicketDetail(ticketId, currentRequester.id)
+    fetchTicketDetail(ticketId, user.id)
       .then(setTicket)
       .catch((err: any) => {
         setError(err?.message || "Ticket not found or access denied");
@@ -57,7 +57,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
   useEffect(() => {
     loadTicket();
-  }, [ticketId, currentRequester]);
+  }, [ticketId, user]);
 
   // Helper formatting
   const formatFileSize = (bytes: number): string => {
@@ -127,7 +127,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
   // Attachment Actions
   const handleConfirmRemove = async () => {
-    if (!attachmentToRemove || !currentRequester) return;
+    if (!attachmentToRemove || !user) return;
 
     setIsRemoving(true);
     setRemoveError(null);
@@ -136,7 +136,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
       await softRemoveAttachment(
         attachmentToRemove.id,
         removeReason.trim(),
-        currentRequester.id
+        user.id
       );
       setAttachmentToRemove(null);
       setRemoveReason("");
@@ -173,13 +173,13 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadFile || !currentRequester || !ticket) return;
+    if (!uploadFile || !user || !ticket) return;
 
     setIsUploading(true);
     setUploadError(null);
 
     try {
-      await uploadAttachment(ticket.id, uploadFile, currentRequester.id);
+      await uploadAttachment(ticket.id, uploadFile, user.id);
       setShowUploadModal(false);
       setUploadFile(null);
       loadTicket();
@@ -417,7 +417,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
               ) : (
                 <div className="list-group mb-4">
                   {activeAttachments.map((att) => {
-                    const downloadUrl = getAttachmentDownloadUrl(att.id, currentRequester?.id);
+                    const downloadUrl = getAttachmentDownloadUrl(att.id, user?.id);
                     return (
                       <div
                         key={att.id}

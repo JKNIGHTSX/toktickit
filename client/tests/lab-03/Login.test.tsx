@@ -4,12 +4,12 @@ import React from "react";
 import { AuthProvider } from "../../src/context/AuthContext.js";
 import { Login } from "../../src/components/Login.js";
 
-global.fetch = vi.fn();
+(globalThis as any).fetch = vi.fn();
 
 describe("Login UI Component (Lab 3 — Issue #3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (global.fetch as any).mockImplementation((url: string) => {
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/auth/me")) {
         return Promise.resolve({
           ok: false,
@@ -53,7 +53,7 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
   });
 
   it("UI-01: displays error banner when authentication fails (401 invalid credentials)", async () => {
-    (global.fetch as any).mockImplementation((url: string) => {
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/auth/login")) {
         return Promise.resolve({
           ok: false,
@@ -89,7 +89,7 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
   });
 
   it("UI-01: displays error banner for inactive user account", async () => {
-    (global.fetch as any).mockImplementation((url: string) => {
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/auth/login")) {
         return Promise.resolve({
           ok: false,
