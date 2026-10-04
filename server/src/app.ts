@@ -59,6 +59,44 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+const VALID_TICKET_STATUSES = [
+  "NEW",
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_FOR_REQUESTER",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
+  "CANCELLED",
+] as const;
+
+const VALID_PRIORITY_LEVELS = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
+
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  NEW: ["OPEN", "CANCELLED"],
+  OPEN: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "CANCELLED"],
+  RESOLVED: ["CLOSED", "REOPENED", "CANCELLED"],
+  REOPENED: ["IN_PROGRESS", "CANCELLED"],
+  CANCELLED: [],
+  CLOSED: [],
+};
+
+const REQUESTER_ALLOWED_STATUS_UPDATES: Record<string, string[]> = {
+  IN_PROGRESS: ["RESOLVED", "IN_PROGRESS"],
+  WAITING_FOR_REQUESTER: ["RESOLVED", "IN_PROGRESS"],
+  RESOLVED: ["REOPENED"],
+  REOPENED: ["IN_PROGRESS"],
+};
+
+const isRoleStaffOrAdmin = (role?: string) => role === "IT_STAFF" || role === "ADMINISTRATOR";
+
+const isValidStatusTransition = (currentStatus: string, nextStatus: string) => {
+  const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
+  return transitions.includes(nextStatus);
+};
+
 // ---------------------------------------------------------------------------
 // Health check endpoint
 // ---------------------------------------------------------------------------
@@ -554,7 +592,7 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
         description: validation.sanitized.description,
         requestedPriority: validation.sanitized.requestedPriority,
         status: "NEW",
-        itPriority: null,
+        itPriority: validation.sanitized.requestedPriority,
         ticketOwnerName: null,
         resolutionSummary: null,
       },
@@ -806,24 +844,11 @@ app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
   try {
     const sessionUserId = req.session?.userId;
     const sessionRole = req.session?.role;
-    const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
 
-    let requesterId: number | undefined;
-    if (sessionUserId) {
-      requesterId = sessionUserId;
-    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
-      requesterId = parseInt(String(rawRequesterId), 10);
-      if (isNaN(requesterId) || requesterId <= 0) {
-        res.status(400).json({
-          error: "Requester ID is required to retrieve ticket details",
-          code: "MISSING_REQUESTER_ID",
-        });
-        return;
-      }
-    } else {
-      res.status(400).json({
-        error: "Requester ID is required to retrieve ticket details",
-        code: "MISSING_REQUESTER_ID",
+    if (!sessionUserId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
       });
       return;
     }
@@ -867,22 +892,20 @@ app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
     }
 
     // 4. Ownership verification
-    if (sessionUserId) {
-      if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
-        res.status(403).json({
-          error: "Forbidden: you do not have permission to view this ticket",
-          code: "FORBIDDEN_TICKET_ACCESS",
-        });
-        return;
-      }
-    } else {
-      if (ticket.requesterId !== requesterId) {
-        res.status(404).json({
-          error: "Ticket not found or you do not have permission to view it",
-          code: "TICKET_NOT_FOUND",
-        });
-        return;
-      }
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
+      res.status(404).json({
+        error: "Ticket not found or you do not have permission to view it",
+        code: "TICKET_NOT_FOUND",
+      });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: role cannot view tickets",
+        code: "FORBIDDEN_ROLE",
+      });
+      return;
     }
 
     // 5. Return complete ticket detail JSON payload
@@ -939,7 +962,7 @@ app.patch("/api/tickets/:id/claim", async (req: Request, res: Response) => {
       return;
     }
 
-    if (sessionRole !== "IT_STAFF" && sessionRole !== "ADMINISTRATOR") {
+    if (!isRoleStaffOrAdmin(sessionRole)) {
       res.status(403).json({ error: "Forbidden: role cannot claim tickets", code: "FORBIDDEN_ROLE" });
       return;
     }
@@ -957,11 +980,22 @@ app.patch("/api/tickets/:id/claim", async (req: Request, res: Response) => {
       return;
     }
 
+    if (ticket.ownerId !== null && ticket.ownerId !== sessionUserId) {
+      res.status(409).json({ error: "Ticket is already assigned to another IT staff member", code: "TICKET_ALREADY_ASSIGNED" });
+      return;
+    }
+
+    const nextStatus = ticket.status === "NEW" ? "OPEN" : ticket.status;
+    if (ticket.status === "CLOSED" || ticket.status === "CANCELLED") {
+      res.status(409).json({ error: "Ticket is no longer claimable", code: "TICKET_NOT_CLAIMABLE" });
+      return;
+    }
+
     const updated = await prisma.ticket.update({
       where: { id: ticketId },
       data: {
         ownerId: sessionUserId,
-        status: ticket.status === "NEW" ? "OPEN" : ticket.status,
+        status: nextStatus,
       },
       include: {
         owner: { select: { id: true, name: true, email: true, role: true } },
@@ -977,6 +1011,36 @@ app.patch("/api/tickets/:id/claim", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/assignable-users — Active ticket owners for IT Staff / Admin
+app.get("/api/assignable-users", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden: role cannot view assignable users", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const users = await getPrisma().user.findMany({
+      where: {
+        isActive: true,
+        role: { in: ["IT_STAFF", "ADMINISTRATOR"] },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+
+    res.status(200).json(users);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch assignable users", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
 // PATCH /api/tickets/:id/assign — Assign ticket ownership (IT Staff & Admin ONLY)
 app.patch("/api/tickets/:id/assign", async (req: Request, res: Response) => {
   try {
@@ -987,7 +1051,7 @@ app.patch("/api/tickets/:id/assign", async (req: Request, res: Response) => {
       return;
     }
 
-    if (sessionRole !== "IT_STAFF" && sessionRole !== "ADMINISTRATOR") {
+    if (!isRoleStaffOrAdmin(sessionRole)) {
       res.status(403).json({ error: "Forbidden: role cannot assign tickets", code: "FORBIDDEN_ROLE" });
       return;
     }
@@ -1002,15 +1066,29 @@ app.patch("/api/tickets/:id/assign", async (req: Request, res: Response) => {
     }
 
     const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
     const targetUser = await prisma.user.findUnique({ where: { id: targetOwnerId } });
     if (!targetUser || !targetUser.isActive || (targetUser.role !== "IT_STAFF" && targetUser.role !== "ADMINISTRATOR")) {
       res.status(400).json({ error: "Target owner must be an active IT Staff or Administrator", code: "INVALID_OWNER" });
       return;
     }
 
+    if (ticket.status === "CLOSED" || ticket.status === "CANCELLED") {
+      res.status(409).json({ error: "Ticket ownership cannot be reassigned after closure", code: "TICKET_NOT_ASSIGNABLE" });
+      return;
+    }
+
     const updated = await prisma.ticket.update({
       where: { id: ticketId },
-      data: { ownerId: targetOwnerId },
+      data: {
+        ownerId: targetOwnerId,
+        status: ticket.status === "NEW" ? "OPEN" : ticket.status,
+      },
       include: { owner: { select: { id: true, name: true } } },
     });
 
@@ -1030,24 +1108,29 @@ app.patch("/api/tickets/:id/priority", async (req: Request, res: Response) => {
       return;
     }
 
-    if (sessionRole !== "IT_STAFF" && sessionRole !== "ADMINISTRATOR") {
+    if (!isRoleStaffOrAdmin(sessionRole)) {
       res.status(403).json({ error: "Forbidden: role cannot update IT priority", code: "FORBIDDEN_ROLE" });
       return;
     }
 
     const ticketId = parseInt(String(req.params.id), 10);
     const { itPriority } = req.body || {};
-    const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
-    if (isNaN(ticketId) || !validPriorities.includes(String(itPriority))) {
+    if (isNaN(ticketId) || !VALID_PRIORITY_LEVELS.includes(String(itPriority) as any)) {
       res.status(400).json({ error: "Invalid priority value", code: "VALIDATION_ERROR" });
       return;
     }
 
     const prisma = getPrisma();
+    const existingTicket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!existingTicket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
     const updated = await prisma.ticket.update({
       where: { id: ticketId },
-      data: { itPriority },
+      data: { itPriority: String(itPriority).toUpperCase() as any },
     });
 
     res.status(200).json({ data: updated, message: `IT Priority updated to ${itPriority}` });
@@ -1073,6 +1156,13 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
     }
 
     const { status, resolutionSummary } = req.body || {};
+    const requestedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
+
+    if (!requestedStatus || !(VALID_TICKET_STATUSES as readonly string[]).includes(requestedStatus)) {
+      res.status(400).json({ error: "Invalid ticket status", code: "VALIDATION_ERROR" });
+      return;
+    }
+
     const prisma = getPrisma();
     const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
 
@@ -1086,14 +1176,26 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
         res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
         return;
       }
-      // Requesters can only signal resolution (transition to RESOLVED) or REOPENED
-      if (status !== "RESOLVED" && status !== "REOPENED" && status !== "IN_PROGRESS") {
+
+      const allowedStatuses = REQUESTER_ALLOWED_STATUS_UPDATES[ticket.status] ?? [];
+      if (!allowedStatuses.includes(requestedStatus)) {
         res.status(403).json({ error: "Requesters cannot set this status", code: "FORBIDDEN_STATUS_TRANSITION" });
         return;
       }
+    } else if (isRoleStaffOrAdmin(sessionRole)) {
+      if (!isValidStatusTransition(ticket.status, requestedStatus)) {
+        res.status(422).json({
+          error: `Invalid status transition from ${ticket.status} to ${requestedStatus}`,
+          code: "INVALID_STATUS_TRANSITION",
+        });
+        return;
+      }
+    } else {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
     }
 
-    if (status === "RESOLVED" && (!resolutionSummary || String(resolutionSummary).trim().length < 5)) {
+    if (requestedStatus === "RESOLVED" && (!resolutionSummary || String(resolutionSummary).trim().length < 5)) {
       res.status(422).json({
         error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
         code: "RESOLUTION_SUMMARY_REQUIRED",
@@ -1101,15 +1203,35 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
+    if (requestedStatus === "CLOSED" && ticket.status !== "RESOLVED") {
+      res.status(422).json({
+        error: "A resolved ticket is required before it can be closed",
+        code: "INVALID_STATUS_TRANSITION",
+      });
+      return;
+    }
+
+    if (requestedStatus === "CANCELLED" && ticket.status === "CLOSED") {
+      res.status(422).json({
+        error: "A closed ticket cannot be cancelled",
+        code: "INVALID_STATUS_TRANSITION",
+      });
+      return;
+    }
+
     const updated = await prisma.ticket.update({
       where: { id: ticketId },
       data: {
-        status,
-        resolutionSummary: resolutionSummary ? String(resolutionSummary).trim() : ticket.resolutionSummary,
+        status: requestedStatus as any,
+        resolutionSummary: requestedStatus === "RESOLVED" || requestedStatus === "CLOSED"
+          ? resolutionSummary
+            ? String(resolutionSummary).trim()
+            : ticket.resolutionSummary
+          : ticket.resolutionSummary,
       },
     });
 
-    res.status(200).json({ data: updated, message: `Ticket status updated to ${status}` });
+    res.status(200).json({ data: updated, message: `Ticket status updated to ${requestedStatus}` });
   } catch (_err) {
     res.status(500).json({ error: "Failed to update ticket status", code: "INTERNAL_SERVER_ERROR" });
   }

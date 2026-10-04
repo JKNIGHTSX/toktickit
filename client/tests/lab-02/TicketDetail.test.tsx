@@ -77,7 +77,7 @@ describe("TicketDetail UI Component (Lab 2 — Issue #6)", () => {
       expect(screen.getByText("Under investigation by hardware desk.")).toBeInTheDocument();
     });
 
-    expect(api.fetchTicketDetail).toHaveBeenCalledWith(101, 1);
+    expect(api.fetchTicketDetail).toHaveBeenCalledWith(101);
   });
 
   it("displays loading state while ticket details are loading", () => {

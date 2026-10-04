@@ -101,10 +101,10 @@ describe("Lab 3 — Issue #4: Server-Side Authorization & Requester Migration AP
       expect(res.body.code).toBe("MISSING_REQUESTER_ID");
     });
 
-    it("rejects unauthenticated GET /api/tickets/:id with 400 MISSING_REQUESTER_ID", async () => {
+    it("rejects unauthenticated GET /api/tickets/:id with 401 UNAUTHENTICATED", async () => {
       const res = await request(app).get(`/api/tickets/${ticketOwnedByA.id}`);
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe("MISSING_REQUESTER_ID");
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("UNAUTHENTICATED");
     });
   });
 

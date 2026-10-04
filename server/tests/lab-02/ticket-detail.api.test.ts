@@ -11,6 +11,8 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
   let ticketAId: number;
   let ticketANumber: string;
   let ticketBId: number;
+  let requesterAAgent: any;
+  let requesterBAgent: any;
   const createdTicketIds: number[] = [];
 
   beforeAll(async () => {
@@ -24,6 +26,23 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
     });
     requesterAId = requesters[0].id;
     requesterBId = requesters[1].id;
+
+    await prisma.user.updateMany({
+      where: { id: { in: [requesterAId, requesterBId] } },
+      data: { mustChangePassword: false },
+    });
+
+    requesterAAgent = request.agent(app);
+    await requesterAAgent.post("/api/auth/login").send({
+      email: requesters[0].email,
+      password: "Password123!",
+    });
+
+    requesterBAgent = request.agent(app);
+    await requesterBAgent.post("/api/auth/login").send({
+      email: requesters[1].email,
+      password: "Password123!",
+    });
 
     // Fetch active category & related system
     const category = await prisma.category.findFirst({ where: { isActive: true } });
@@ -73,16 +92,14 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
     }
   });
 
-  it("returns 400 Bad Request when requesterId is missing", async () => {
+  it("returns 401 Unauthorized when no authenticated session is present", async () => {
     const res = await request(app).get(`/api/tickets/${ticketAId}`);
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("MISSING_REQUESTER_ID");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
   });
 
   it("API-11 / AC-16: returns 200 OK with complete ticket details for owned ticket by numeric ID", async () => {
-    const res = await request(app)
-      .get(`/api/tickets/${ticketAId}`)
-      .set("X-Requester-Id", String(requesterAId));
+    const res = await requesterAAgent.get(`/api/tickets/${ticketAId}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -108,9 +125,7 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
   });
 
   it("API-11 / AC-16: returns 200 OK with complete ticket details for owned ticket by Ticket Number", async () => {
-    const res = await request(app)
-      .get(`/api/tickets/${ticketANumber}`)
-      .set("X-Requester-Id", String(requesterAId));
+    const res = await requesterAAgent.get(`/api/tickets/${ticketANumber}`);
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(ticketAId);
@@ -118,9 +133,7 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
   });
 
   it("API-12 / AC-10: returns 404 Not Found when Requester B attempts to view Requester A's ticket (ownership isolation)", async () => {
-    const res = await request(app)
-      .get(`/api/tickets/${ticketAId}`)
-      .set("X-Requester-Id", String(requesterBId));
+    const res = await requesterBAgent.get(`/api/tickets/${ticketAId}`);
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("TICKET_NOT_FOUND");
@@ -128,9 +141,7 @@ describe("Lab 2 — Issue #6: Ticket Detail API Tests (GET /api/tickets/:idOrNum
   });
 
   it("returns 404 Not Found for non-existent ticket ID", async () => {
-    const res = await request(app)
-      .get("/api/tickets/99999999")
-      .set("X-Requester-Id", String(requesterAId));
+    const res = await requesterAAgent.get("/api/tickets/99999999");
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("TICKET_NOT_FOUND");
