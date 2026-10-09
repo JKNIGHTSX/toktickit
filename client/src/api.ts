@@ -407,18 +407,108 @@ export async function fetchTickets(
 // ---------------------------------------------------------------------------
 export type TicketDetail = Ticket;
 
-export async function fetchTicketDetail(
-  idOrNumber: string | number,
-  requesterId?: number
-): Promise<TicketDetail> {
-  const headers: Record<string, string> = {};
-  if (requesterId !== undefined) {
-    headers["X-Requester-Id"] = String(requesterId);
+export interface AssignableUser {
+  id: number;
+  name: string;
+  email: string;
+  role: "IT_STAFF" | "ADMINISTRATOR";
+  isActive: boolean;
+}
+
+export interface AssignTicketResult {
+  data: {
+    id: number;
+    ownerId: number;
+    owner: { id: number; name: string } | null;
+    status: TicketStatus;
+  };
+  message: string;
+}
+
+export interface UpdateITPriorityResult {
+  data: Pick<Ticket, "id" | "itPriority" | "updatedAt">;
+  message: string;
+}
+
+export interface UpdateTicketStatusResult {
+  data: Pick<Ticket, "id" | "status" | "resolutionSummary" | "updatedAt">;
+  message: string;
+}
+
+export async function fetchAssignableUsers(): Promise<AssignableUser[]> {
+  const res = await fetch(`${API_URL}/api/assignable-users`, { credentials: "include" });
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch assignable users";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMsg);
   }
 
-  const query = requesterId !== undefined ? `?requesterId=${requesterId}` : "";
-  const url = `${API_URL}/api/tickets/${idOrNumber}${query}`;
-  const res = await fetch(url, { headers });
+  return res.json();
+}
+
+export async function assignTicket(ticketId: number, ownerId: number): Promise<AssignTicketResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/assign`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ ownerId }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to assign ticket");
+  }
+
+  return data;
+}
+
+export async function updateTicketITPriority(
+  ticketId: number,
+  itPriority: PriorityLevel
+): Promise<UpdateITPriorityResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/priority`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ itPriority }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to update IT Priority");
+  }
+
+  return data;
+}
+
+export async function updateTicketStatus(
+  ticketId: number,
+  status: TicketStatus,
+  resolutionSummary?: string
+): Promise<UpdateTicketStatusResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ status, resolutionSummary }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to update ticket status");
+  }
+
+  return data;
+}
+
+export async function fetchTicketDetail(idOrNumber: string | number): Promise<TicketDetail> {
+  const url = `${API_URL}/api/tickets/${idOrNumber}`;
+  const res = await fetch(url, { credentials: "include" });
 
   if (!res.ok) {
     let errorMsg = "Ticket not found or access denied";

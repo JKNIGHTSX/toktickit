@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from "react";
 import {
+  assignTicket,
+  fetchAssignableUsers,
   fetchTicketDetail,
+  updateTicketITPriority,
+  updateTicketStatus,
   uploadAttachment,
   softRemoveAttachment,
   getAttachmentDownloadUrl,
   TicketDetail as TicketDetailType,
+  AssignableUser,
   Attachment,
   PriorityLevel,
   TicketStatus,
@@ -19,6 +24,32 @@ interface TicketDetailProps {
 const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_ACTIVE_ATTACHMENTS = 5;
+const PRIORITY_OPTIONS: PriorityLevel[] = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const STAFF_STATUS_ACTIONS: Partial<Record<TicketStatus, { status: TicketStatus; label: string }[]>> = {
+  NEW: [
+    { status: "OPEN", label: "Open Ticket" },
+    { status: "CANCELLED", label: "Cancel Ticket" },
+  ],
+  OPEN: [
+    { status: "IN_PROGRESS", label: "Begin Work" },
+    { status: "CANCELLED", label: "Cancel Ticket" },
+  ],
+  IN_PROGRESS: [
+    { status: "WAITING_FOR_REQUESTER", label: "Request Info" },
+    { status: "RESOLVED", label: "Resolve Ticket" },
+    { status: "CANCELLED", label: "Cancel Ticket" },
+  ],
+  WAITING_FOR_REQUESTER: [{ status: "CANCELLED", label: "Cancel Ticket" }],
+  RESOLVED: [
+    { status: "CLOSED", label: "Close Ticket" },
+    { status: "REOPENED", label: "Reopen Ticket" },
+    { status: "CANCELLED", label: "Cancel Ticket" },
+  ],
+  REOPENED: [
+    { status: "IN_PROGRESS", label: "Resume Work" },
+    { status: "CANCELLED", label: "Cancel Ticket" },
+  ],
+};
 
 export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const { user } = useAuth();
@@ -26,6 +57,19 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [ticket, setTicket] = useState<TicketDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
+  const [selectedPriority, setSelectedPriority] = useState<PriorityLevel | "">("");
+  const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [resolutionSummaryDraft, setResolutionSummaryDraft] = useState("");
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const canAssignTickets = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
+  const backDestination = canAssignTickets ? "Ticket Queue" : "My Tickets";
 
   // Soft Removal Modal State
   const [attachmentToRemove, setAttachmentToRemove] = useState<Attachment | null>(null);
@@ -45,8 +89,12 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
     setLoading(true);
     setError(null);
 
-    fetchTicketDetail(ticketId, user.id)
-      .then(setTicket)
+    fetchTicketDetail(ticketId)
+      .then((loadedTicket) => {
+        setTicket(loadedTicket);
+        setSelectedPriority(loadedTicket.itPriority ?? loadedTicket.requestedPriority);
+        setResolutionSummaryDraft(loadedTicket.resolutionSummary || "");
+      })
       .catch((err: any) => {
         setError(err?.message || "Ticket not found or access denied");
       })
@@ -58,6 +106,107 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   useEffect(() => {
     loadTicket();
   }, [ticketId, user]);
+
+  useEffect(() => {
+    if (!canAssignTickets) {
+      setAssignableUsers([]);
+      setSelectedAssigneeId("");
+      return;
+    }
+
+    let cancelled = false;
+    fetchAssignableUsers()
+      .then((users) => {
+        if (!cancelled) {
+          setAssignableUsers(users.filter((candidate) => candidate.isActive));
+        }
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setAssignmentError(err?.message || "Failed to load assignable users");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canAssignTickets]);
+
+  const handleAssign = async () => {
+    if (!ticket || !canAssignTickets) return;
+
+    const selectedAssignee = assignableUsers.find(
+      (candidate) => String(candidate.id) === selectedAssigneeId && candidate.isActive
+    );
+    if (!selectedAssignee) return;
+
+    setIsAssigning(true);
+    setAssignmentError(null);
+    setAssignmentMessage(null);
+    try {
+      const result = await assignTicket(ticket.id, selectedAssignee.id);
+      setTicket((current) => current
+        ? {
+            ...current,
+            ticketOwnerName: result.data.owner?.name || selectedAssignee.name,
+            status: result.data.status,
+          }
+        : current);
+      setAssignmentMessage(`Assigned to ${result.data.owner?.name || selectedAssignee.name}`);
+    } catch (err: any) {
+      setAssignmentError(err?.message || "Failed to assign ticket");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const handleUpdatePriority = async () => {
+    if (!ticket || !canAssignTickets || !selectedPriority) return;
+
+    setIsUpdatingPriority(true);
+    setOperationError(null);
+    setOperationMessage(null);
+    try {
+      const result = await updateTicketITPriority(ticket.id, selectedPriority);
+      setTicket((current) => current
+        ? { ...current, itPriority: result.data.itPriority, updatedAt: result.data.updatedAt }
+        : current);
+      setOperationMessage(result.message);
+    } catch (err: any) {
+      setOperationError(err?.message || "Failed to update IT Priority");
+    } finally {
+      setIsUpdatingPriority(false);
+    }
+  };
+
+  const handleUpdateStatus = async (nextStatus: TicketStatus) => {
+    if (!ticket || !canAssignTickets) return;
+    if (nextStatus === "RESOLVED" && resolutionSummaryDraft.trim().length < 5) return;
+
+    setIsUpdatingStatus(true);
+    setOperationError(null);
+    setOperationMessage(null);
+    try {
+      const summary = nextStatus === "RESOLVED" ? resolutionSummaryDraft.trim() : undefined;
+      const result = await updateTicketStatus(ticket.id, nextStatus, summary);
+      setTicket((current) => current
+        ? {
+            ...current,
+            status: result.data.status,
+            resolutionSummary: result.data.resolutionSummary,
+            updatedAt: result.data.updatedAt,
+          }
+        : current);
+      if (result.data.resolutionSummary) {
+        setResolutionSummaryDraft(result.data.resolutionSummary);
+      }
+      setOperationMessage(result.message);
+    } catch (err: any) {
+      setOperationError(err?.message || "Failed to update ticket status");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   // Helper formatting
   const formatFileSize = (bytes: number): string => {
@@ -196,6 +345,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
   const activeAttachments = ticket?.attachments?.filter((a) => !a.isRemoved) || [];
   const removedAttachments = ticket?.attachments?.filter((a) => a.isRemoved) || [];
+  const staffStatusActions = ticket ? STAFF_STATUS_ACTIONS[ticket.status] ?? [] : [];
 
   return (
     <div className="container p-0 mx-auto" style={{ maxWidth: "860px" }}>
@@ -210,7 +360,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                 onClick={onBack}
                 style={{ color: "#006B3C", fontSize: "14px" }}
               >
-                My Tickets
+                {backDestination}
               </button>
             </li>
             <li className="breadcrumb-item active" aria-current="page" style={{ color: "#556B60" }}>
@@ -224,7 +374,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
           onClick={onBack}
           style={{ fontSize: "13px" }}
         >
-          &larr; Back to My Tickets
+          &larr; Back to {backDestination}
         </button>
       </div>
 
@@ -258,7 +408,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
               onClick={onBack}
               style={{ backgroundColor: "#006B3C" }}
             >
-              Return to My Tickets
+              Return to {backDestination}
             </button>
           </div>
         </div>
@@ -329,24 +479,146 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
                 <div className="col-12 col-md-4">
                   <label className="form-label text-muted small fw-semibold mb-1">IT Priority</label>
-                  <div
-                    className="p-2 border rounded d-flex align-items-center"
-                    style={{ backgroundColor: "#F0F4F1", borderColor: "#D1D9D4", height: "38px" }}
-                  >
-                    {renderPriorityBadge(ticket.itPriority)}
-                  </div>
+                  {canAssignTickets ? (
+                    <div className="d-flex flex-column gap-2">
+                      <div className="d-flex gap-2">
+                        <select
+                          className="form-select form-select-sm"
+                          aria-label="Update IT Priority"
+                          value={selectedPriority || ticket.itPriority || ticket.requestedPriority}
+                          disabled={isUpdatingPriority}
+                          onChange={(event) => {
+                            setSelectedPriority(event.target.value as PriorityLevel);
+                            setOperationError(null);
+                            setOperationMessage(null);
+                          }}
+                        >
+                          {PRIORITY_OPTIONS.map((priority) => (
+                            <option key={priority} value={priority}>{priority}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-success text-nowrap"
+                          disabled={
+                            !selectedPriority
+                            || selectedPriority === ticket.itPriority
+                            || isUpdatingPriority
+                          }
+                          onClick={handleUpdatePriority}
+                        >
+                          {isUpdatingPriority ? "Saving…" : "Save Priority"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="p-2 border rounded d-flex align-items-center"
+                      style={{ backgroundColor: "#F0F4F1", borderColor: "#D1D9D4", height: "38px" }}
+                    >
+                      {renderPriorityBadge(ticket.itPriority)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-12 col-md-4">
                   <label className="form-label text-muted small fw-semibold mb-1">Assigned IT Owner</label>
-                  <div
-                    className="p-2 border rounded text-dark"
-                    style={{ backgroundColor: "#F0F4F1", borderColor: "#D1D9D4", fontSize: "14px", cursor: "default" }}
-                  >
-                    {ticket.ticketOwnerName || "Unassigned"}
-                  </div>
+                  {canAssignTickets ? (
+                    <div className="d-flex flex-column gap-2">
+                      <div className="small text-muted">
+                        Current: <span className="fw-semibold text-dark">{ticket.ticketOwnerName || "Unassigned"}</span>
+                      </div>
+                      <select
+                        id="ticket-assignee"
+                        className="form-select form-select-sm"
+                        aria-label="Assign to IT Staff or Administrator"
+                        value={selectedAssigneeId}
+                        onChange={(event) => {
+                          setSelectedAssigneeId(event.target.value);
+                          setAssignmentError(null);
+                          setAssignmentMessage(null);
+                        }}
+                      >
+                        <option value="">Select an active IT owner</option>
+                        {assignableUsers.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.name} ({candidate.role === "ADMINISTRATOR" ? "Administrator" : "IT Staff"})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-sm text-white fw-semibold align-self-start"
+                        style={{ backgroundColor: "#006B3C", borderColor: "#006B3C" }}
+                        disabled={
+                          !assignableUsers.some((candidate) => String(candidate.id) === selectedAssigneeId && candidate.isActive)
+                          || isAssigning
+                          || ticket.status === "CLOSED"
+                          || ticket.status === "CANCELLED"
+                        }
+                        onClick={handleAssign}
+                      >
+                        {isAssigning ? "Assigning…" : "Assign"}
+                      </button>
+                      {assignmentError && <div className="small text-danger" role="alert">{assignmentError}</div>}
+                      {assignmentMessage && <div className="small text-success" role="status">{assignmentMessage}</div>}
+                    </div>
+                  ) : (
+                    <div
+                      className="p-2 border rounded text-dark"
+                      style={{ backgroundColor: "#F0F4F1", borderColor: "#D1D9D4", fontSize: "14px", cursor: "default" }}
+                    >
+                      {ticket.ticketOwnerName || "Unassigned"}
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {canAssignTickets && (operationError || operationMessage) && (
+                <div className={`alert ${operationError ? "alert-danger" : "alert-success"} py-2 px-3 mb-4`} role={operationError ? "alert" : "status"}>
+                  {operationError || operationMessage}
+                </div>
+              )}
+
+              {canAssignTickets && staffStatusActions.length > 0 && (
+                <section className="mb-4 p-3 border rounded" aria-labelledby="ticket-service-actions">
+                  <h2 id="ticket-service-actions" className="h6 fw-bold mb-3" style={{ color: "#1E2B24" }}>
+                    Service Actions
+                  </h2>
+                  {staffStatusActions.some((action) => action.status === "RESOLVED") && (
+                    <div className="mb-3">
+                      <label htmlFor="ticket-resolution-summary" className="form-label small fw-semibold">
+                        Resolution Summary
+                      </label>
+                      <textarea
+                        id="ticket-resolution-summary"
+                        className="form-control"
+                        rows={3}
+                        maxLength={2000}
+                        value={resolutionSummaryDraft}
+                        onChange={(event) => setResolutionSummaryDraft(event.target.value)}
+                        placeholder="Describe the resolution (at least 5 characters)"
+                      />
+                    </div>
+                  )}
+                  <div className="d-flex flex-wrap gap-2">
+                    {staffStatusActions.map((action) => (
+                      <button
+                        key={action.status}
+                        type="button"
+                        className={action.status === "CANCELLED" ? "btn btn-sm btn-outline-danger" : "btn btn-sm btn-success"}
+                        disabled={
+                          isUpdatingStatus
+                          || (action.status === "RESOLVED" && resolutionSummaryDraft.trim().length < 5)
+                        }
+                        onClick={() => handleUpdateStatus(action.status)}
+                      >
+                        {isUpdatingStatus ? "Saving…" : action.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* Summary Section */}
               <div className="mb-4">
