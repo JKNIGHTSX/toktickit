@@ -15,6 +15,11 @@ vi.mock("../../src/api.js", async (importOriginal) => {
     assignTicket: vi.fn(),
     updateTicketITPriority: vi.fn(),
     updateTicketStatus: vi.fn(),
+    fetchTicketComments: vi.fn(),
+    createTicketComment: vi.fn(),
+    fetchInternalNotes: vi.fn(),
+    createInternalNote: vi.fn(),
+    markTicketProblemResolved: vi.fn(),
   };
 });
 
@@ -53,6 +58,30 @@ describe("Ticket Detail assignment controls", () => {
     vi.clearAllMocks();
     vi.mocked(api.fetchCurrentUser).mockResolvedValue(staffUser);
     vi.mocked(api.fetchTicketDetail).mockResolvedValue(ticket);
+    vi.mocked(api.fetchTicketComments).mockResolvedValue([]);
+    vi.mocked(api.createTicketComment).mockResolvedValue({
+      data: {
+        id: 901,
+        ticketId: ticket.id,
+        authorId: staffUser.id,
+        content: "Thanks, I will investigate.",
+        createdAt: "2026-10-05T10:01:00.000Z",
+        author: { id: staffUser.id, name: staffUser.name, role: "IT_STAFF" },
+      },
+      message: "Public comment posted",
+    });
+    vi.mocked(api.fetchInternalNotes).mockResolvedValue([]);
+    vi.mocked(api.createInternalNote).mockResolvedValue({
+      data: {
+        id: 902,
+        ticketId: ticket.id,
+        authorId: staffUser.id,
+        content: "Review device logs.",
+        createdAt: "2026-10-05T10:02:00.000Z",
+        author: { id: staffUser.id, name: staffUser.name, role: "IT_STAFF" },
+      },
+      message: "Internal note recorded",
+    });
     vi.mocked(api.fetchAssignableUsers).mockResolvedValue([
       { id: 3, name: "Tech Two", email: "tech2@toktickit.local", role: "IT_STAFF", isActive: true },
       { id: 4, name: "Inactive Tech", email: "inactive@toktickit.local", role: "IT_STAFF", isActive: false },
@@ -144,5 +173,122 @@ describe("Ticket Detail assignment controls", () => {
       expect(api.updateTicketStatus).toHaveBeenCalledWith(ticket.id, "RESOLVED", "Issue fixed");
     });
     expect(await screen.findByRole("status")).toHaveTextContent("Ticket status updated to RESOLVED");
+  });
+
+  it("keeps public comments and internal notes distinct and renders comment content as text", async () => {
+    const untrustedText = '<img src=x onerror="alert(1)">';
+    vi.mocked(api.fetchTicketComments).mockResolvedValue([{
+      id: 900,
+      ticketId: ticket.id,
+      authorId: 5,
+      content: untrustedText,
+      createdAt: "2026-10-05T10:00:00.000Z",
+      author: { id: 5, name: "Jennifer Anderson", role: "REQUESTER" },
+    }]);
+
+    const { container } = render(
+      <AuthProvider>
+        <TicketDetail ticketId={ticket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText(untrustedText)).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Public Comments (1)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Internal Notes (0)" })).toBeInTheDocument();
+    expect(screen.getByText("Restricted: visible only to IT Staff and Administrators.")).toBeInTheDocument();
+  });
+
+  it("validates and posts public comments and internal notes without edit or delete controls", async () => {
+    render(
+      <AuthProvider>
+        <TicketDetail ticketId={ticket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    await screen.findByText(ticket.ticketNumber);
+    const commentInput = screen.getByLabelText("Add Public Comment");
+    const noteInput = screen.getByLabelText("Add Internal Note");
+    expect(screen.getByRole("button", { name: "Post Comment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Post Internal Note" })).toBeDisabled();
+
+    fireEvent.change(commentInput, { target: { value: "  Thanks for the update.  " } });
+    fireEvent.change(noteInput, { target: { value: "  Review device logs.  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Post Comment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Post Internal Note" }));
+
+    await waitFor(() => {
+      expect(api.createTicketComment).toHaveBeenCalledWith(ticket.id, "Thanks for the update.");
+      expect(api.createInternalNote).toHaveBeenCalledWith(ticket.id, "Review device logs.");
+    });
+    expect(await screen.findByText("Thanks, I will investigate.")).toBeInTheDocument();
+    expect(await screen.findByText("Review device logs.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Edit|Delete/i })).not.toBeInTheDocument();
+  });
+
+  it("lets a requester indicate a problem appears resolved and hides internal notes", async () => {
+    const requester: api.AuthUser = {
+      id: 5,
+      email: "jennifer.anderson@toktickit.local",
+      name: "Jennifer Anderson",
+      role: "REQUESTER",
+      mustChangePassword: false,
+      isActive: true,
+    };
+    const requesterTicket = { ...ticket, status: "IN_PROGRESS" as const };
+    const resolutionComment: api.TicketComment = {
+      id: 903,
+      ticketId: ticket.id,
+      authorId: requester.id,
+      content: "The requester indicates that the problem appears resolved.",
+      createdAt: "2026-10-05T10:03:00.000Z",
+      author: { id: requester.id, name: requester.name, role: "REQUESTER" },
+    };
+    vi.mocked(api.fetchCurrentUser).mockResolvedValue(requester);
+    vi.mocked(api.fetchTicketDetail).mockResolvedValue(requesterTicket);
+    vi.mocked(api.markTicketProblemResolved).mockResolvedValue({
+      data: { ticket: { ...requesterTicket, status: "RESOLVED" }, comment: resolutionComment },
+      message: "Problem marked as appearing resolved",
+    });
+
+    render(
+      <AuthProvider>
+        <TicketDetail ticketId={ticket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Problem Appears Resolved" }));
+    await waitFor(() => expect(api.markTicketProblemResolved).toHaveBeenCalledWith(ticket.id));
+    expect(await screen.findByText(resolutionComment.content)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Internal Notes/ })).not.toBeInTheDocument();
+  });
+
+  it("shows collaboration API failures without hiding the ticket", async () => {
+    vi.mocked(api.fetchTicketComments).mockRejectedValue(new Error("Comments service unavailable"));
+
+    render(
+      <AuthProvider>
+        <TicketDetail ticketId={ticket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText(ticket.ticketNumber)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Comments service unavailable");
+  });
+
+  it.each([
+    { status: 403, title: "Access Forbidden" },
+    { status: 404, title: "Ticket Not Found" },
+  ])("renders the ticket $status state", async ({ status, title }) => {
+    const error = Object.assign(new Error("Ticket unavailable"), { status });
+    vi.mocked(api.fetchTicketDetail).mockRejectedValue(error);
+
+    render(
+      <AuthProvider>
+        <TicketDetail ticketId={ticket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
   });
 });

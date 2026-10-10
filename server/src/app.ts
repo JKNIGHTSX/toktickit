@@ -84,8 +84,8 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
 };
 
 const REQUESTER_ALLOWED_STATUS_UPDATES: Record<string, string[]> = {
-  IN_PROGRESS: ["RESOLVED", "IN_PROGRESS"],
-  WAITING_FOR_REQUESTER: ["RESOLVED", "IN_PROGRESS"],
+  IN_PROGRESS: ["IN_PROGRESS"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS"],
   RESOLVED: ["REOPENED"],
   REOPENED: ["IN_PROGRESS"],
 };
@@ -1251,7 +1251,11 @@ app.get("/api/tickets/:id/comments", async (req: Request, res: Response) => {
       return;
     }
 
-    const ticketId = parseInt(String(req.params.id), 10);
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
     const prisma = getPrisma();
     const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
 
@@ -1262,6 +1266,10 @@ app.get("/api/tickets/:id/comments", async (req: Request, res: Response) => {
 
     if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
       res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
       return;
     }
 
@@ -1287,10 +1295,14 @@ app.post("/api/tickets/:id/comments", async (req: Request, res: Response) => {
       return;
     }
 
-    const ticketId = parseInt(String(req.params.id), 10);
+    const ticketId = Number(String(req.params.id));
     const { content } = req.body || {};
     const trimmed = typeof content === "string" ? content.trim() : "";
 
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
     if (!trimmed || trimmed.length > 1000) {
       res.status(400).json({ error: "Comment content must be between 1 and 1000 characters", code: "VALIDATION_ERROR" });
       return;
@@ -1306,6 +1318,10 @@ app.post("/api/tickets/:id/comments", async (req: Request, res: Response) => {
 
     if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
       res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
       return;
     }
 
@@ -1339,8 +1355,17 @@ app.get("/api/tickets/:id/notes", async (req: Request, res: Response) => {
       return;
     }
 
-    const ticketId = parseInt(String(req.params.id), 10);
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
     const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
     const notes = await prisma.internalNote.findMany({
       where: { ticketId },
       orderBy: { createdAt: "asc" },
@@ -1368,16 +1393,25 @@ app.post("/api/tickets/:id/notes", async (req: Request, res: Response) => {
       return;
     }
 
-    const ticketId = parseInt(String(req.params.id), 10);
+    const ticketId = Number(String(req.params.id));
     const { content } = req.body || {};
     const trimmed = typeof content === "string" ? content.trim() : "";
 
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
     if (!trimmed || trimmed.length > 1000) {
       res.status(400).json({ error: "Note content must be between 1 and 1000 characters", code: "VALIDATION_ERROR" });
       return;
     }
 
     const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
     const note = await prisma.internalNote.create({
       data: {
         ticketId,
@@ -1390,6 +1424,56 @@ app.post("/api/tickets/:id/notes", async (req: Request, res: Response) => {
     res.status(201).json({ data: note, message: "Internal note recorded" });
   } catch (_err) {
     res.status(500).json({ error: "Failed to record internal note", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/problem-appears-resolved — Requester resolution indication
+app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER") {
+      res.status(403).json({ error: "Only Requesters can submit this indication", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+    if (ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (ticket.status !== "IN_PROGRESS" && ticket.status !== "WAITING_FOR_REQUESTER") {
+      res.status(422).json({ error: "The ticket is not in a state that can be marked as resolved", code: "INVALID_STATUS_TRANSITION" });
+      return;
+    }
+
+    const content = "The requester indicates that the problem appears resolved.";
+    const [updatedTicket, comment] = await prisma.$transaction([
+      prisma.ticket.update({ where: { id: ticketId }, data: { status: "RESOLVED" } }),
+      prisma.publicComment.create({
+        data: { ticketId, authorId: sessionUserId, content },
+        include: { author: { select: { id: true, name: true, role: true } } },
+      }),
+    ]);
+
+    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Problem marked as appearing resolved" });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to record resolution indication", code: "INTERNAL_SERVER_ERROR" });
   }
 });
 

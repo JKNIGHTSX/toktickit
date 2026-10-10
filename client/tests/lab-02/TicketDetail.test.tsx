@@ -8,6 +8,11 @@ import * as api from "../../src/api";
 // Mock API functions
 vi.mock("../../src/api", () => ({
   fetchTicketDetail: vi.fn(),
+  fetchTicketComments: vi.fn(),
+  createTicketComment: vi.fn(),
+  fetchInternalNotes: vi.fn(),
+  createInternalNote: vi.fn(),
+  markTicketProblemResolved: vi.fn(),
 }));
 
 // Mock useRequester hook
@@ -58,6 +63,8 @@ function setupRequesterMock() {
 describe("TicketDetail UI Component (Lab 2 — Issue #6)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.fetchTicketComments as any).mockResolvedValue([]);
+    (api.fetchInternalNotes as any).mockResolvedValue([]);
     setupRequesterMock();
   });
 
