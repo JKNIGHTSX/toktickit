@@ -592,7 +592,7 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
         description: validation.sanitized.description,
         requestedPriority: validation.sanitized.requestedPriority,
         status: "NEW",
-        itPriority: validation.sanitized.requestedPriority,
+        itPriority: null,
         ticketOwnerName: null,
         resolutionSummary: null,
       },
