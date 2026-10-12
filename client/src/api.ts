@@ -526,6 +526,69 @@ export async function fetchTicketDetail(idOrNumber: string | number): Promise<Ti
   return res.json();
 }
 
+export interface TicketComment {
+  id: number;
+  ticketId: number;
+  authorId: number;
+  content: string;
+  createdAt: string;
+  author: { id: number; name: string; role: UserRole };
+}
+
+export type InternalNote = TicketComment;
+
+async function collaborationRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { ...init, credentials: "include" });
+  let payload: any;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = {};
+  }
+  if (!res.ok) {
+    const error = new Error(payload?.error || "Ticket collaboration request failed") as Error & {
+      status: number;
+      code?: string;
+    };
+    error.status = res.status;
+    error.code = payload?.code;
+    throw error;
+  }
+  return payload as T;
+}
+
+export function fetchTicketComments(ticketId: number): Promise<TicketComment[]> {
+  return collaborationRequest<TicketComment[]>(`${API_URL}/api/tickets/${ticketId}/comments`);
+}
+
+export function createTicketComment(ticketId: number, content: string): Promise<{ data: TicketComment; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function fetchInternalNotes(ticketId: number): Promise<InternalNote[]> {
+  return collaborationRequest<InternalNote[]>(`${API_URL}/api/tickets/${ticketId}/notes`);
+}
+
+export function createInternalNote(ticketId: number, content: string): Promise<{ data: InternalNote; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function markTicketProblemResolved(
+  ticketId: number
+): Promise<{ data: { ticket: Ticket; comment: TicketComment }; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/problem-appears-resolved`, {
+    method: "POST",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Lab 2 — Issue 7: Attachment Lifecycle API
 // ---------------------------------------------------------------------------

@@ -18,6 +18,11 @@ vi.mock("../../src/api", () => ({
   createTicket: vi.fn(),
   fetchTickets: vi.fn(),
   fetchTicketDetail: vi.fn(),
+  fetchTicketComments: vi.fn(),
+  createTicketComment: vi.fn(),
+  fetchInternalNotes: vi.fn(),
+  createInternalNote: vi.fn(),
+  markTicketProblemResolved: vi.fn(),
   softRemoveAttachment: vi.fn(),
   uploadAttachment: vi.fn(),
   getAttachmentDownloadUrl: vi.fn(
@@ -66,6 +71,8 @@ function hexToRgb(hex: string): string {
 describe("UI-12: Zen Green Styling & Theme Token Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.fetchTicketComments as any).mockResolvedValue([]);
+    (api.fetchInternalNotes as any).mockResolvedValue([]);
   });
 
   // --- RequesterSelect Zen Green palette checks ---

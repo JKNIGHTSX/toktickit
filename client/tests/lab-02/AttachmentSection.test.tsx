@@ -7,6 +7,11 @@ import * as api from "../../src/api";
 
 vi.mock("../../src/api", () => ({
   fetchTicketDetail: vi.fn(),
+  fetchTicketComments: vi.fn(),
+  createTicketComment: vi.fn(),
+  fetchInternalNotes: vi.fn(),
+  createInternalNote: vi.fn(),
+  markTicketProblemResolved: vi.fn(),
   softRemoveAttachment: vi.fn(),
   uploadAttachment: vi.fn(),
   getAttachmentDownloadUrl: vi.fn(
@@ -84,6 +89,8 @@ function setupRequesterMock() {
 describe("UI-10 & UI-11: Attachment Section Component Tests (Issue #7)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.fetchTicketComments as any).mockResolvedValue([]);
+    (api.fetchInternalNotes as any).mockResolvedValue([]);
     setupRequesterMock();
   });
 

@@ -8,9 +8,16 @@ import {
   uploadAttachment,
   softRemoveAttachment,
   getAttachmentDownloadUrl,
+  fetchTicketComments,
+  createTicketComment,
+  fetchInternalNotes,
+  createInternalNote,
+  markTicketProblemResolved,
   TicketDetail as TicketDetailType,
   AssignableUser,
   Attachment,
+  TicketComment,
+  InternalNote,
   PriorityLevel,
   TicketStatus,
 } from "../api.js";
@@ -57,6 +64,20 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [ticket, setTicket] = useState<TicketDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadErrorStatus, setLoadErrorStatus] = useState<number | null>(null);
+  const [comments, setComments] = useState<TicketComment[]>([]);
+  const [notes, setNotes] = useState<InternalNote[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [noteMessage, setNoteMessage] = useState<string | null>(null);
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [isPostingNote, setIsPostingNote] = useState(false);
+  const [isMarkingResolved, setIsMarkingResolved] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
@@ -88,15 +109,35 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
     setLoading(true);
     setError(null);
+    setLoadErrorStatus(null);
 
     fetchTicketDetail(ticketId)
       .then((loadedTicket) => {
         setTicket(loadedTicket);
         setSelectedPriority(loadedTicket.itPriority ?? loadedTicket.requestedPriority);
         setResolutionSummaryDraft(loadedTicket.resolutionSummary || "");
+        setCommentsLoading(true);
+        setCommentError(null);
+        fetchTicketComments(loadedTicket.id)
+          .then(setComments)
+          .catch((err: any) => setCommentError(err?.message || "Failed to load public comments"))
+          .finally(() => setCommentsLoading(false));
+
+        if (canAssignTickets) {
+          setNotesLoading(true);
+          setNoteError(null);
+          fetchInternalNotes(loadedTicket.id)
+            .then(setNotes)
+            .catch((err: any) => setNoteError(err?.message || "Failed to load internal notes"))
+            .finally(() => setNotesLoading(false));
+        } else {
+          setNotes([]);
+          setNotesLoading(false);
+        }
       })
       .catch((err: any) => {
         setError(err?.message || "Ticket not found or access denied");
+        setLoadErrorStatus(err?.status ?? null);
       })
       .finally(() => {
         setLoading(false);
@@ -106,6 +147,59 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   useEffect(() => {
     loadTicket();
   }, [ticketId, user]);
+
+  const handlePostComment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ticket || !commentDraft.trim() || commentDraft.trim().length > 1000) return;
+    setIsPostingComment(true);
+    setCommentError(null);
+    setCommentMessage(null);
+    try {
+      const result = await createTicketComment(ticket.id, commentDraft.trim());
+      setComments((current) => [...current, result.data]);
+      setCommentDraft("");
+      setCommentMessage(result.message);
+    } catch (err: any) {
+      setCommentError(err?.message || "Failed to post public comment");
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
+  const handlePostNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ticket || !canAssignTickets || !noteDraft.trim() || noteDraft.trim().length > 1000) return;
+    setIsPostingNote(true);
+    setNoteError(null);
+    setNoteMessage(null);
+    try {
+      const result = await createInternalNote(ticket.id, noteDraft.trim());
+      setNotes((current) => [...current, result.data]);
+      setNoteDraft("");
+      setNoteMessage(result.message);
+    } catch (err: any) {
+      setNoteError(err?.message || "Failed to post internal note");
+    } finally {
+      setIsPostingNote(false);
+    }
+  };
+
+  const handleMarkProblemResolved = async () => {
+    if (!ticket || user?.role !== "REQUESTER") return;
+    setIsMarkingResolved(true);
+    setCommentError(null);
+    setCommentMessage(null);
+    try {
+      const result = await markTicketProblemResolved(ticket.id);
+      setTicket((current) => current ? { ...current, status: result.data.ticket.status } : current);
+      setComments((current) => [...current, result.data.comment]);
+      setCommentMessage(result.message);
+    } catch (err: any) {
+      setCommentError(err?.message || "Failed to record resolution indication");
+    } finally {
+      setIsMarkingResolved(false);
+    }
+  };
 
   useEffect(() => {
     if (!canAssignTickets) {
@@ -394,9 +488,9 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
           className="card shadow-sm border text-center p-5 my-3"
           style={{ backgroundColor: "#FFFFFF", borderColor: "#D1D9D4", borderRadius: "8px" }}
         >
-          <div className="display-4 mb-3 text-danger" aria-hidden="true">🔒</div>
+          <div className="display-4 mb-3 text-danger" aria-hidden="true">{loadErrorStatus === 404 ? "!" : "🔒"}</div>
           <h2 className="h5 fw-bold mb-2" style={{ color: "#1E2B24" }}>
-            Ticket Not Found or Access Denied
+            {loadErrorStatus === 404 ? "Ticket Not Found" : loadErrorStatus === 403 ? "Access Forbidden" : "Ticket Not Found or Access Denied"}
           </h2>
           <p className="text-muted small mx-auto mb-4" style={{ maxWidth: "420px" }}>
             {error || "The requested ticket does not exist or you do not have permission to view it."}
@@ -659,8 +753,116 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                   {ticket.resolutionSummary || "No resolution summary available yet."}
                 </div>
               </div>
+
+              {user?.role === "REQUESTER" && ["IN_PROGRESS", "WAITING_FOR_REQUESTER"].includes(ticket.status) && (
+                <div className="mt-4 p-3 border rounded" style={{ backgroundColor: "#EAF6EF", borderColor: "#A3D9B8" }}>
+                  <p className="small mb-2" style={{ color: "#1E2B24" }}>
+                    Is the issue resolved? This records your indication and notifies IT.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-sm text-white fw-semibold"
+                    style={{ backgroundColor: "#006B3C", borderColor: "#006B3C" }}
+                    disabled={isMarkingResolved}
+                    onClick={handleMarkProblemResolved}
+                  >
+                    {isMarkingResolved ? "Submitting…" : "Problem Appears Resolved"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+
+          <section className="card shadow-sm border mb-4" aria-labelledby="public-comments-heading" style={{ borderColor: "#A3D9B8", borderRadius: "8px" }}>
+            <div className="card-header border-bottom" style={{ backgroundColor: "#EAF6EF", borderColor: "#A3D9B8" }}>
+              <h2 id="public-comments-heading" className="h6 fw-bold mb-0" style={{ color: "#1E2B24" }}>Public Comments ({comments.length})</h2>
+            </div>
+            <div className="card-body" style={{ backgroundColor: "#F7FBF8" }}>
+              {commentError && <div className="alert alert-danger py-2" role="alert">{commentError}</div>}
+              {commentMessage && <div className="alert alert-success py-2" role="status">{commentMessage}</div>}
+              {commentsLoading ? <p className="small text-muted mb-3" role="status">Loading public comments…</p> : (
+                comments.length === 0
+                  ? <p className="small text-muted mb-3">No public comments yet.</p>
+                  : <div className="d-grid gap-2 mb-3">
+                    {comments.map((comment) => (
+                      <article key={comment.id} className="p-3 border rounded" style={{ backgroundColor: "#EAF6EF", borderColor: "#C8E6C9" }}>
+                        <div className="d-flex justify-content-between flex-wrap gap-1 mb-2 small">
+                          <span className="fw-semibold">{comment.author.name} <span className="text-muted">({comment.author.role.replaceAll("_", " ")})</span></span>
+                          <time className="text-muted" dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
+                        </div>
+                        <p className="mb-0 text-break" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{comment.content}</p>
+                      </article>
+                    ))}
+                  </div>
+              )}
+              <form onSubmit={handlePostComment}>
+                <label htmlFor="public-comment-content" className="form-label small fw-semibold">Add Public Comment</label>
+                <textarea
+                  id="public-comment-content"
+                  className="form-control mb-2"
+                  rows={3}
+                  maxLength={1000}
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                  aria-describedby="public-comment-count"
+                  placeholder="Write a comment visible to the requester and IT…"
+                />
+                <div className="d-flex justify-content-between align-items-center gap-2">
+                  <span id="public-comment-count" className="small text-muted">{commentDraft.length}/1000</span>
+                  <button type="submit" className="btn btn-sm btn-success" disabled={!commentDraft.trim() || isPostingComment || commentDraft.trim().length > 1000}>
+                    {isPostingComment ? "Posting…" : "Post Comment"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          {canAssignTickets && (
+            <section className="card shadow-sm border mb-4" aria-labelledby="internal-notes-heading" style={{ borderColor: "#FFE082", borderRadius: "8px" }}>
+              <div className="card-header border-bottom" style={{ backgroundColor: "#FFF8E1", borderColor: "#FFE082" }}>
+                <h2 id="internal-notes-heading" className="h6 fw-bold mb-1" style={{ color: "#795548" }}>Internal Notes ({notes.length})</h2>
+                <p className="small mb-0" style={{ color: "#795548" }}>Restricted: visible only to IT Staff and Administrators.</p>
+              </div>
+              <div className="card-body" style={{ backgroundColor: "#FFFCF2" }}>
+                {noteError && <div className="alert alert-danger py-2" role="alert">{noteError}</div>}
+                {noteMessage && <div className="alert alert-success py-2" role="status">{noteMessage}</div>}
+                {notesLoading ? <p className="small text-muted mb-3" role="status">Loading internal notes…</p> : (
+                  notes.length === 0
+                    ? <p className="small text-muted mb-3">No internal notes yet.</p>
+                    : <div className="d-grid gap-2 mb-3">
+                      {notes.map((note) => (
+                        <article key={note.id} className="p-3 border rounded" style={{ backgroundColor: "#FFF8E1", borderColor: "#FFE082" }}>
+                          <div className="d-flex justify-content-between flex-wrap gap-1 mb-2 small" style={{ color: "#795548" }}>
+                            <span className="fw-semibold">{note.author.name} <span>({note.author.role.replaceAll("_", " ")})</span></span>
+                            <time dateTime={note.createdAt}>{formatDate(note.createdAt)}</time>
+                          </div>
+                          <p className="mb-0 text-break" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{note.content}</p>
+                        </article>
+                      ))}
+                    </div>
+                )}
+                <form onSubmit={handlePostNote}>
+                  <label htmlFor="internal-note-content" className="form-label small fw-semibold">Add Internal Note</label>
+                  <textarea
+                    id="internal-note-content"
+                    className="form-control mb-2"
+                    rows={3}
+                    maxLength={1000}
+                    value={noteDraft}
+                    onChange={(event) => setNoteDraft(event.target.value)}
+                    aria-describedby="internal-note-count"
+                    placeholder="Write a private note for the IT team…"
+                  />
+                  <div className="d-flex justify-content-between align-items-center gap-2">
+                    <span id="internal-note-count" className="small text-muted">{noteDraft.length}/1000</span>
+                    <button type="submit" className="btn btn-sm btn-warning" disabled={!noteDraft.trim() || isPostingNote || noteDraft.trim().length > 1000}>
+                      {isPostingNote ? "Posting…" : "Post Internal Note"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </section>
+          )}
 
           {/* Attachments Panel */}
           <div

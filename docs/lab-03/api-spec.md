@@ -91,6 +91,7 @@ Authentication relies on secure, HTTP-only session cookies (or signed bearer tok
 | `POST /api/tickets/:id/comments` | `401` | Owned Only | Allowed | Allowed |
 | `GET /api/tickets/:id/notes` | `401` | `403` | Allowed | Allowed |
 | `POST /api/tickets/:id/notes` | `401` | `403` | Allowed | Allowed |
+| `POST /api/tickets/:id/problem-appears-resolved` | `401` | Owned ticket only | `403` | `403` |
 | `POST /api/tickets/:id/attachments` | `401` | Owned Only | Allowed | Allowed |
 | `GET /api/attachments/:id/download` | `401` | Owned Only | Allowed | Allowed |
 | `DELETE /api/attachments/:id` | `401` | Owned Only | Allowed | Allowed |
@@ -437,6 +438,12 @@ Authentication relies on secure, HTTP-only session cookies (or signed bearer tok
     "message": "Internal note recorded"
   }
   ```
+
+#### `POST /api/tickets/:id/problem-appears-resolved`
+* **Purpose**: Let the owner Requester indicate that an in-progress or waiting ticket appears resolved.
+* **Behavior**: Atomically transitions the ticket to `RESOLVED` and appends a Public Comment attributed to the authenticated Requester. This is a resolution indication, not an IT resolution summary.
+* **Response `200 OK`**: Returns the updated ticket and created Public Comment.
+* **Errors**: `403 Forbidden` for non-requesters or non-owned tickets, `404 Not Found` for a missing ticket, and `422 Unprocessable` when the ticket is not `IN_PROGRESS` or `WAITING_FOR_REQUESTER`.
 
 ---
 
