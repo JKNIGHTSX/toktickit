@@ -1481,7 +1481,7 @@ app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: 
 // User Management Endpoints (Admin ONLY)
 // ---------------------------------------------------------------------------
 
-// GET /api/users — List Users (Admin ONLY)
+// GET /api/users — List Users with optional search and role filter (Admin ONLY)
 app.get("/api/users", async (req: Request, res: Response) => {
   try {
     const sessionUserId = req.session?.userId;
@@ -1496,8 +1496,33 @@ app.get("/api/users", async (req: Request, res: Response) => {
       return;
     }
 
+    const { search, role } = req.query;
+
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (role && (typeof role !== "string" || !VALID_USER_ROLES.includes(role))) {
+      res.status(400).json({
+        error: "Invalid role filter",
+        code: "INVALID_ROLE",
+      });
+      return;
+    }
+
+    const where: any = {};
+    if (role) {
+      where.role = role;
+    }
+
+    if (search && typeof search === "string" && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { name: { contains: term, mode: "insensitive" } },
+        { email: { contains: term, mode: "insensitive" } },
+      ];
+    }
+
     const prisma = getPrisma();
     const users = await prisma.user.findMany({
+      where,
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -1515,6 +1540,411 @@ app.get("/api/users", async (req: Request, res: Response) => {
   } catch (_err) {
     res.status(500).json({ error: "Failed to fetch users", code: "INTERNAL_SERVER_ERROR" });
   }
+});
+
+// GET /api/users/:id — Get User Detail (Admin ONLY)
+app.get("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        department: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    res.status(200).json({ data: user });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/users — Create User with one role & initial password (Admin ONLY)
+app.post("/api/users", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const { name, email, role, isActive, initialPassword } = req.body || {};
+
+    // Validate name
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "name", message: "Full name is required" }],
+      });
+      return;
+    }
+
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || typeof email !== "string" || !emailRegex.test(email.trim())) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "email", message: "Valid email address is required" }],
+      });
+      return;
+    }
+
+    // Validate role (exactly one permitted role)
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (!role || typeof role !== "string" || !VALID_USER_ROLES.includes(role)) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "role", message: "Role must be exactly one of: REQUESTER, IT_STAFF, ADMINISTRATOR" }],
+      });
+      return;
+    }
+
+    // Validate initialPassword
+    if (!initialPassword || typeof initialPassword !== "string") {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: "Initial password is required" }],
+      });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(initialPassword);
+    if (!policy.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: policy.errors.join("; ") }],
+      });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const prisma = getPrisma();
+
+    // Check duplicate email
+    const existing = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: cleanEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (existing) {
+      res.status(409).json({
+        error: "Email is already registered",
+        code: "EMAIL_ALREADY_EXISTS",
+        details: [{ field: "email", message: "Email is already registered" }],
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+    const newUser = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        role: role as any,
+        isActive: isActive !== undefined ? Boolean(isActive) : true,
+        passwordHash,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json({
+      data: newUser,
+      message: "User account created successfully",
+    });
+  } catch (_err) {
+    console.error("POST /api/users error:", _err);
+    res.status(500).json({ error: "Failed to create user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/users/:id — Update User (Name, Email, Role, Activation) (Admin ONLY)
+app.patch("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    const { name, email, role, isActive } = req.body || {};
+
+    // Validate name if provided
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({
+          error: "Name cannot be empty",
+          code: "VALIDATION_ERROR",
+          details: [{ field: "name", message: "Name cannot be empty" }],
+        });
+        return;
+      }
+    }
+
+    // Validate role if provided
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (role !== undefined) {
+      if (typeof role !== "string" || !VALID_USER_ROLES.includes(role)) {
+        res.status(400).json({
+          error: "Invalid role value",
+          code: "INVALID_ROLE",
+          details: [{ field: "role", message: "Role must be exactly one of: REQUESTER, IT_STAFF, ADMINISTRATOR" }],
+        });
+        return;
+      }
+    }
+
+    // Validate email if provided
+    if (email !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (typeof email !== "string" || !emailRegex.test(email.trim())) {
+        res.status(400).json({
+          error: "Valid email is required",
+          code: "VALIDATION_ERROR",
+          details: [{ field: "email", message: "Valid email address is required" }],
+        });
+        return;
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail !== targetUser.email.toLowerCase()) {
+        const dup = await prisma.user.findFirst({
+          where: {
+            email: { equals: cleanEmail, mode: "insensitive" },
+            id: { not: targetUserId },
+          },
+        });
+        if (dup) {
+          res.status(409).json({
+            error: "Email is already registered",
+            code: "EMAIL_ALREADY_EXISTS",
+            details: [{ field: "email", message: "Email is already registered" }],
+          });
+          return;
+        }
+      }
+    }
+
+    // Guardrail: Cannot deactivate own Administrator account
+    if (isActive === false && targetUserId === sessionUserId) {
+      res.status(400).json({
+        error: "Cannot deactivate your own active Administrator account",
+        code: "SELF_DEACTIVATION_FORBIDDEN",
+      });
+      return;
+    }
+
+    // Guardrail: Cannot remove or deactivate the last active Administrator
+    const isDeactivating = isActive === false;
+    const isDemotingAdmin = role !== undefined && role !== "ADMINISTRATOR";
+
+    if (targetUser.role === "ADMINISTRATOR" && targetUser.isActive && (isDeactivating || isDemotingAdmin)) {
+      const activeAdminCount = await prisma.user.count({
+        where: {
+          role: "ADMINISTRATOR",
+          isActive: true,
+        },
+      });
+
+      if (activeAdminCount <= 1) {
+        res.status(400).json({
+          error: "Cannot remove or deactivate the last active Administrator. At least one active Administrator must remain.",
+          code: "LAST_ADMIN_PROTECTION",
+        });
+        return;
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+        ...(email !== undefined && { email: email.trim().toLowerCase() }),
+        ...(role !== undefined && { role: role as any }),
+        ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      data: updated,
+      message: "User updated successfully",
+    });
+  } catch (_err) {
+    console.error("PATCH /api/users/:id error:", _err);
+    res.status(500).json({ error: "Failed to update user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/users/:id/reset-password — Set new initial password requiring change at next login (Admin ONLY)
+app.post("/api/users/:id/reset-password", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    const { initialPassword } = req.body || {};
+    if (!initialPassword || typeof initialPassword !== "string") {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: "Initial password is required" }],
+      });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(initialPassword);
+    if (!policy.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: policy.errors.join("; ") }],
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+      },
+    });
+
+    res.status(200).json({
+      message: "New initial password set. User will be required to change it at next login.",
+    });
+  } catch (_err) {
+    console.error("POST /api/users/:id/reset-password error:", _err);
+    res.status(500).json({ error: "Failed to reset initial password", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// DELETE /api/users/:id — Hard deletion is prohibited by Business Rule (BR-25)
+app.delete("/api/users/:id", async (req: Request, res: Response) => {
+  const sessionUserId = req.session?.userId;
+  const sessionRole = req.session?.role;
+  if (!sessionUserId) {
+    res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+    return;
+  }
+  if (sessionRole !== "ADMINISTRATOR") {
+    res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+    return;
+  }
+
+  res.status(400).json({
+    error: "User deletion is not permitted. Deactivate account instead.",
+    code: "USER_DELETION_FORBIDDEN",
+  });
 });
 
 // ---------------------------------------------------------------------------
