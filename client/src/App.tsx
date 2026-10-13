@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { checkSystem, Category } from "./api.js";
 import { AuthProvider, useAuth } from "./context/AuthContext.js";
 import { Login } from "./components/Login.js";
@@ -7,6 +7,7 @@ import { CreateTicket } from "./components/CreateTicket.js";
 import { MyTickets } from "./components/MyTickets.js";
 import { TicketDetail } from "./components/TicketDetail.js";
 import { StaffTicketQueue } from "./components/StaffTicketQueue.js";
+import { UserManagement } from "./components/UserManagement.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
@@ -18,11 +19,30 @@ function AppContent() {
   const [state, setState] = useState<UiState>("idle");
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  // IT Staff / Admin default to ticket queue; Requesters default to create-ticket
-  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail" | "staff-queue">(
-    isStaffOrAdmin ? "staff-queue" : "create-ticket"
+  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail" | "staff-queue" | "user-management">(
+    user?.role === "ADMINISTRATOR"
+      ? "user-management"
+      : isStaffOrAdmin
+      ? "staff-queue"
+      : "create-ticket"
   );
   const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
+
+  useEffect(() => {
+    if (user?.role === "ADMINISTRATOR") {
+      if (view !== "user-management" && view !== "staff-queue" && view !== "ticket-detail") {
+        setView("user-management");
+      }
+    } else if (user?.role === "IT_STAFF") {
+      if (view !== "staff-queue" && view !== "ticket-detail") {
+        setView("staff-queue");
+      }
+    } else if (user?.role === "REQUESTER") {
+      if (view !== "create-ticket" && view !== "my-tickets" && view !== "ticket-detail") {
+        setView("create-ticket");
+      }
+    }
+  }, [user?.role]);
 
   async function handleCheck() {
     setState("loading");
@@ -274,8 +294,61 @@ function AppContent() {
         ) : (
           <div>
             {/* Role-specific Tab Navigation */}
-            {isStaffOrAdmin ? (
-              /* ── IT Staff / Administrator Navigation ── */
+            {user?.role === "ADMINISTRATOR" ? (
+              /* ── Administrator Navigation ── */
+              <div>
+                <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "user-management" ? "active fw-bold" : ""}`}
+                      id="nav-user-management"
+                      onClick={() => setView("user-management")}
+                      style={{
+                        color: view === "user-management" ? "#006B3C" : "#556B60",
+                        backgroundColor: view === "user-management" ? "#EAF6EF" : "transparent",
+                        borderColor: view === "user-management" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                      }}
+                    >
+                      👥 User Management
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "staff-queue" || view === "ticket-detail" ? "active fw-bold" : ""}`}
+                      id="nav-ticket-queue"
+                      onClick={() => setView("staff-queue")}
+                      style={{
+                        color: view === "staff-queue" || view === "ticket-detail" ? "#006B3C" : "#556B60",
+                        backgroundColor: view === "staff-queue" || view === "ticket-detail" ? "#EAF6EF" : "transparent",
+                        borderColor: view === "staff-queue" || view === "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+                      }}
+                    >
+                      🗂 Ticket Queue
+                    </button>
+                  </li>
+                </ul>
+
+                {view === "user-management" && <UserManagement />}
+
+                {view === "ticket-detail" && selectedTicketId !== null && (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => setView("staff-queue")}
+                  />
+                )}
+
+                {view === "staff-queue" && (
+                  <StaffTicketQueue
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                    onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
+              </div>
+            ) : isStaffOrAdmin ? (
+              /* ── IT Staff Navigation ── */
               <div>
                 <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
                   <li className="nav-item">

@@ -54,18 +54,18 @@ The testing strategy for TokTickIT Lab 3 follows **Test-Driven Design (Test DD)*
 | **API-16** | API | FR-10, AC-16 | `POST /api/tickets/:id/notes` (IT Staff) | `201 Created`, creates internal note | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
 | **API-17** | API | BR-18, AC-16 | `POST /api/tickets/:id/notes` (Requester) | `403 Forbidden`, internal note creation strictly blocked | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
 | **API-18** | API | BR-18, AC-16 | `GET /api/tickets/:id/notes` (Requester) | `403 Forbidden`, internal notes listing strictly blocked | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| **API-19** | API | FR-11, AC-18 | `GET /api/users` (Administrator) | `200 OK`, lists all users with search/role filters | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-20** | API | BR-20, AC-18 | `GET /api/users` (Non-Admin: IT Staff / Requester) | `403 Forbidden` | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-21** | API | FR-12, AC-19 | `POST /api/users` (Valid payload) | `201 Created`, creates user account with `mustChangePassword=true` | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-22** | API | BR-22, AC-20 | `POST /api/users` (Duplicate email) | `409 Conflict` with clear error detail | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-23** | API | BR-23, AC-22 | `PATCH /api/users/:id` (Self-Deactivation) | `400 Bad Request` ("Cannot deactivate your own account") | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-24** | API | BR-24, AC-23 | `PATCH /api/users/:id` (Deactivate last Admin) | `400 Bad Request` ("At least one active Administrator must remain") | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **API-25** | API | FR-14, AC-24 | `POST /api/users/:id/reset-password` | `200 OK`, updates password hash and sets `mustChangePassword=true` | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| **UI-01** | UI | AC-01, AC-02 | Login Form Component | Renders inputs, handles submission, displays inline/banner errors | `client/src/tests/lab-03/Login.test.tsx` | Planned |
-| **UI-02** | UI | AC-03, AC-04 | Change Password Component | Renders password rules checklist, validates matching confirm input | `client/src/tests/lab-03/ChangePassword.test.tsx` | Planned |
-| **UI-03** | UI | AC-08, AC-09 | Staff Ticket Queue Component | Renders data grid, handles search input, filters, and pagination | `client/src/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
-| **UI-04** | UI | AC-10, AC-17 | Staff Ticket Detail Component | Renders editable controls, Public Comments tab, amber Internal Notes tab | `client/src/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
-| **UI-05** | UI | AC-18 to 24| Admin User Management Component | Renders user list, search, role filter, Create/Edit modals, safety alerts | `client/src/tests/lab-03/UserManagement.test.tsx` | Planned |
+| **API-19** | API | FR-11, AC-18 | `GET /api/users` (Administrator) | `200 OK`, lists all users with search/role filters | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-20** | API | BR-20, AC-18 | `GET /api/users` (Non-Admin: IT Staff / Requester) | `403 Forbidden` | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-21** | API | FR-12, AC-19 | `POST /api/users` (Valid payload) | `201 Created`, creates user account with `mustChangePassword=true` | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-22** | API | BR-22, AC-20 | `POST /api/users` (Duplicate email) | `409 Conflict` with clear error detail | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-23** | API | BR-23, AC-22 | `PATCH /api/users/:id` (Self-Deactivation) | `400 Bad Request` ("Cannot deactivate your own account") | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-24** | API | BR-24, AC-23 | `PATCH /api/users/:id` (Deactivate last Admin) | `400 Bad Request` ("At least one active Administrator must remain") | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **API-25** | API | FR-14, AC-24 | `POST /api/users/:id/reset-password` | `200 OK`, updates password hash and sets `mustChangePassword=true` | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| **UI-01** | UI | AC-01, AC-02 | Login Form Component | Renders inputs, handles submission, displays inline/banner errors | `client/tests/lab-03/Login.test.tsx` | Pass |
+| **UI-02** | UI | AC-03, AC-04 | Change Password Component | Renders password rules checklist, validates matching confirm input | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
+| **UI-03** | UI | AC-08, AC-09 | Staff Ticket Queue Component | Renders data grid, handles search input, filters, and pagination | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
+| **UI-04** | UI | AC-10, AC-17 | Staff Ticket Detail Component | Renders editable controls, Public Comments tab, amber Internal Notes tab | `client/tests/lab-03/TicketDetailAssignment.test.tsx` | Pass |
+| **UI-05** | UI | AC-18 to 24| Admin User Management Component | Renders user list, search, role filter, Create/Edit modals, safety alerts | `client/tests/lab-03/UserManagement.test.tsx` | Pass |
 | **E2E-01**| E2E | AC-01 to 05| Login & Initial Password Journey | Full browser test: Login with initial pass -> Forced redirect -> Save pass -> Shell | `e2e/lab-03/authentication.spec.ts` | Planned |
 | **E2E-02**| E2E | AC-08 to 17| IT Staff Ticket Management Journey | Full browser test: View Queue -> Search/Filter -> Claim -> Update Priority/Status -> Comment & Note | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
 | **E2E-03**| E2E | AC-18 to 24| Admin User Management Journey | Full browser test: Login Admin -> Create User -> Edit Role -> Trigger Safety Rules -> Reset Password | `e2e/lab-03/user-administration.spec.ts` | Planned |

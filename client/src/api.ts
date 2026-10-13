@@ -694,5 +694,117 @@ export async function softRemoveAttachment(
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Lab 3 — Issue #8: Administrator User Management API
+// ---------------------------------------------------------------------------
+
+export interface UserAccount {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  department?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive?: boolean;
+  initialPassword: string;
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+export async function fetchUsers(params?: { search?: string; role?: string }): Promise<UserAccount[]> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.role) query.set("role", params.role);
+  const qs = query.toString() ? `?${query.toString()}` : "";
+
+  const res = await fetch(`${API_URL}/api/users${qs}`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch users");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
+}
+
+export async function createUser(payload: CreateUserInput): Promise<UserAccount> {
+  const res = await fetch(`${API_URL}/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to create user");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function updateUser(id: number, payload: UpdateUserInput): Promise<UserAccount> {
+  const res = await fetch(`${API_URL}/api/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to update user");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function resetUserPassword(id: number, initialPassword: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_URL}/api/users/${id}/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ initialPassword }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to set initial password");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
+}
+
 
 
