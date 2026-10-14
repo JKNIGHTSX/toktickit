@@ -1,11 +1,15 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import session from "express-session";
+import cookieParser from "cookie-parser";
+import bcrypt from "bcryptjs";
 import { getPrisma } from "./prisma.js";
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { validateTicketInput } from "./utils/validators.js";
+import { validatePasswordPolicy } from "./utils/password-policy.js";
 import {
   validateAttachmentFile,
   generateStoredFileName,
@@ -13,10 +17,35 @@ import {
   MAX_FILE_SIZE_BYTES,
 } from "./utils/attachment-validator.js";
 
+declare module "express-session" {
+  interface SessionData {
+    userId?: number;
+    role?: string;
+  }
+}
+
 export const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "toktickit_session_secret_key_2026_lab3",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 // Setup safe local disk storage directory for attachments
 const uploadsDir = path.join(process.cwd(), "uploads", "attachments");
@@ -30,11 +59,317 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+const VALID_TICKET_STATUSES = [
+  "NEW",
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_FOR_REQUESTER",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
+  "CANCELLED",
+] as const;
+
+const VALID_PRIORITY_LEVELS = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
+
+export const STATUS_TRANSITIONS: Record<string, string[]> = {
+  NEW: ["OPEN", "CANCELLED"],
+  OPEN: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "CANCELLED"],
+  RESOLVED: ["CLOSED", "REOPENED", "CANCELLED"],
+  REOPENED: ["IN_PROGRESS", "CANCELLED"],
+  CANCELLED: [],
+  CLOSED: [],
+};
+
+export const REQUESTER_ALLOWED_STATUS_UPDATES: Record<string, string[]> = {
+  IN_PROGRESS: ["IN_PROGRESS"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS"],
+  RESOLVED: ["REOPENED"],
+  REOPENED: ["IN_PROGRESS"],
+};
+
+export const isRoleStaffOrAdmin = (role?: string) => role === "IT_STAFF" || role === "ADMINISTRATOR";
+
+export const isValidStatusTransition = (currentStatus: string, nextStatus: string) => {
+  const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
+  return transitions.includes(nextStatus);
+};
+
 // ---------------------------------------------------------------------------
 // Health check endpoint
 // ---------------------------------------------------------------------------
 app.get("/api/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", service: "TokTickIT API" });
+});
+
+// ---------------------------------------------------------------------------
+// Authentication Endpoints (Lab 3 Issue #3)
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/login
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {};
+
+    if (!email || !password || typeof email !== "string" || typeof password !== "string") {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const cleanEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: cleanEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (!user) {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(401).json({
+        error: "Account is inactive. Please contact an Administrator",
+        code: "ACCOUNT_INACTIVE",
+      });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      res.status(401).json({
+        error: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
+      });
+      return;
+    }
+
+    req.session.userId = user.id;
+    req.session.role = user.role;
+
+    res.status(200).json({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          department: user.department,
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+          isActive: user.isActive,
+        },
+      },
+      message: "Login successful",
+    });
+  } catch (_err) {
+    console.error("POST /api/auth/login error:", _err);
+    res.status(500).json({
+      error: "Internal server error during authentication",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// POST /api/auth/logout
+app.post("/api/auth/logout", (req: Request, res: Response) => {
+  req.session.destroy((_err) => {
+    res.clearCookie("connect.sid");
+    res.status(200).json({
+      message: "Logged out successfully",
+    });
+  });
+});
+
+// GET /api/auth/me
+app.get("/api/auth/me", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.isActive) {
+      req.session.destroy(() => {});
+      res.clearCookie("connect.sid");
+      res.status(401).json({
+        error: "Account is inactive or user not found",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+        isActive: user.isActive,
+      },
+    });
+  } catch (_err) {
+    res.status(500).json({
+      error: "Internal server error retrieving user profile",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// POST /api/auth/change-password
+app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [
+          { field: "currentPassword", message: "Current password is required" },
+          { field: "newPassword", message: "New password is required" },
+          { field: "confirmPassword", message: "Confirm password is required" },
+        ].filter((d) => !req.body?.[d.field]),
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [
+          { field: "confirmPassword", message: "New password and confirmation do not match" },
+        ],
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user || !user.isActive) {
+      res.status(401).json({
+        error: "User not found or account inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!passwordMatches) {
+      res.status(400).json({
+        error: "Current password is incorrect",
+        code: "INVALID_CURRENT_PASSWORD",
+        details: [
+          { field: "currentPassword", message: "Current password is incorrect" },
+        ],
+      });
+      return;
+    }
+
+    const policyResult = validatePasswordPolicy(newPassword);
+    if (!policyResult.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [
+          {
+            field: "newPassword",
+            message: "Password must contain at least 8 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character",
+          },
+        ],
+      });
+      return;
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    res.status(200).json({
+      message: "Password changed successfully. You may now access the application.",
+    });
+  } catch (_err) {
+    console.error("POST /api/auth/change-password error:", _err);
+    res.status(500).json({
+      error: "Internal server error changing password",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Mandatory First-Login Password Change Intercept Middleware
+// ---------------------------------------------------------------------------
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  const allowedUnauthenticatedOrAuthPaths = [
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/auth/change-password",
+    "/api/categories",
+    "/api/related-systems",
+    "/api/requesters",
+  ];
+
+  if (allowedUnauthenticatedOrAuthPaths.includes(req.path)) {
+    return next();
+  }
+
+  const userId = req.session?.userId;
+  if (userId) {
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user && user.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+  }
+
+  next();
 });
 
 // Fallback seed data for development when database container is offline
@@ -109,8 +444,8 @@ app.get("/api/related-systems", async (_req: Request, res: Response) => {
 app.get("/api/requesters", async (_req: Request, res: Response) => {
   try {
     const prisma = getPrisma();
-    const requesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const requesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -131,14 +466,23 @@ app.get("/api/requesters", async (_req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 app.post("/api/tickets", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
-
-    // Resolve requesterId from body (primary) or X-Requester-Id header
+    const sessionUserId = req.session?.userId;
     const rawRequesterId = req.body.requesterId ?? req.headers["x-requester-id"];
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-    // Validate requesterId is a valid integer
-    if (isNaN(requesterId) || requesterId <= 0) {
+    let requesterId: number;
+    if (sessionUserId) {
+      requesterId = sessionUserId;
+    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+      requesterId = parseInt(String(rawRequesterId), 10);
+      if (isNaN(requesterId) || requesterId <= 0) {
+        res.status(400).json({
+          error: "Validation failed",
+          code: "VALIDATION_ERROR",
+          details: [{ field: "requesterId", message: "A valid requester ID is required" }],
+        });
+        return;
+      }
+    } else {
       res.status(400).json({
         error: "Validation failed",
         code: "VALIDATION_ERROR",
@@ -147,8 +491,10 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
       return;
     }
 
+    const prisma = getPrisma();
+
     // Verify requester exists and is active
-    const requester = await prisma.requesterUser.findUnique({
+    const requester = await prisma.user.findUnique({
       where: { id: requesterId },
     });
 
@@ -296,19 +642,31 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 app.get("/api/tickets", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
-
-    // 1. Resolve active requesterId from X-Requester-Id header or requesterId query param
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
     const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-    if (isNaN(requesterId) || requesterId <= 0) {
+    let requesterId: number | undefined;
+    if (sessionUserId) {
+      requesterId = sessionUserId;
+    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+      requesterId = parseInt(String(rawRequesterId), 10);
+      if (isNaN(requesterId) || requesterId <= 0) {
+        res.status(400).json({
+          error: "Requester ID is required to retrieve tickets",
+          code: "MISSING_REQUESTER_ID",
+        });
+        return;
+      }
+    } else {
       res.status(400).json({
         error: "Requester ID is required to retrieve tickets",
         code: "MISSING_REQUESTER_ID",
       });
       return;
     }
+
+    const prisma = getPrisma();
 
     // 2. Parse & sanitize pagination params
     let page = parseInt(String(req.query.page ?? "1"), 10);
@@ -319,9 +677,19 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     if (pageSize > 50) pageSize = 50;
 
     // 3. Build filter conditions
-    const where: any = {
-      requesterId: requesterId,
-    };
+    const where: any = {};
+    if (sessionUserId) {
+      if (sessionRole === "REQUESTER") {
+        where.requesterId = sessionUserId;
+      } else if (req.query.requesterId) {
+        const queryReqId = parseInt(String(req.query.requesterId), 10);
+        if (!isNaN(queryReqId)) {
+          where.requesterId = queryReqId;
+        }
+      }
+    } else {
+      where.requesterId = requesterId;
+    }
 
     // Text search (case-insensitive on ticketNumber or summary)
     const search = req.query.search !== undefined ? String(req.query.search).trim() : "";
@@ -340,9 +708,12 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       }
     }
 
-    // Priority & Status Enum filters
+    // Priority & Status Enum filters (includes all Lab 3 statuses)
     const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-    const validStatuses = ["NEW", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED", "CANCELLED"];
+    const validStatuses = [
+      "NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER",
+      "RESOLVED", "CLOSED", "REOPENED", "CANCELLED",
+    ];
 
     if (req.query.requestedPriority && validPriorities.includes(String(req.query.requestedPriority))) {
       where.requestedPriority = String(req.query.requestedPriority);
@@ -356,8 +727,27 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       where.status = String(req.query.status);
     }
 
-    // 4. Build sorting
-    const validSortFields = ["createdAt", "ticketNumber", "summary", "status", "requestedPriority", "updatedAt"];
+    // assignedTo filter — IT Staff / Admin only (BR-11)
+    // Values: "UNASSIGNED" | "ME" | "<userId number>"
+    if (sessionRole === "IT_STAFF" || sessionRole === "ADMINISTRATOR") {
+      const assignedTo = req.query.assignedTo;
+      if (assignedTo !== undefined && assignedTo !== "") {
+        const assignedToStr = String(assignedTo).trim();
+        if (assignedToStr === "UNASSIGNED") {
+          where.ownerId = null;
+        } else if (assignedToStr === "ME" && sessionUserId) {
+          where.ownerId = sessionUserId;
+        } else {
+          const staffId = parseInt(assignedToStr, 10);
+          if (!isNaN(staffId) && staffId > 0) {
+            where.ownerId = staffId;
+          }
+        }
+      }
+    }
+
+    // 4. Build sorting (itPriority added as valid sort field for IT Staff queue)
+    const validSortFields = ["createdAt", "ticketNumber", "summary", "status", "requestedPriority", "itPriority", "updatedAt"];
     const sortBy = validSortFields.includes(String(req.query.sortBy)) ? String(req.query.sortBy) : "createdAt";
     const sortOrder = String(req.query.sortOrder).toLowerCase() === "asc" ? "asc" : "desc";
 
@@ -370,6 +760,8 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     const totalItems = await prisma.ticket.count({ where });
 
     const skip = (page - 1) * pageSize;
+    const isStaffOrAdmin = sessionRole === "IT_STAFF" || sessionRole === "ADMINISTRATOR";
+
     const tickets = await prisma.ticket.findMany({
       where,
       orderBy,
@@ -386,6 +778,13 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
           where: { isRemoved: false },
           select: { id: true },
         },
+        // Include requester & owner for IT Staff / Admin queue view
+        ...(isStaffOrAdmin
+          ? {
+              requester: { select: { id: true, name: true, email: true } },
+              owner: { select: { id: true, name: true, role: true } },
+            }
+          : {}),
       },
     });
 
@@ -395,7 +794,7 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     const hasPrevPage = page > 1 && totalPages > 0;
 
     // 7. Map payload items
-    const data = tickets.map((t) => ({
+    const data = tickets.map((t: any) => ({
       id: t.id,
       ticketNumber: t.ticketNumber,
       requesterId: t.requesterId,
@@ -409,6 +808,13 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       attachmentCount: t.attachments.length,
+      // IT Staff / Admin-only enriched fields
+      ...(isStaffOrAdmin
+        ? {
+            requester: t.requester,
+            owner: t.owner ?? null,
+          }
+        : {}),
     }));
 
     res.status(200).json({
@@ -436,19 +842,18 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
 
-    // 1. Resolve active requesterId from X-Requester-Id header or requesterId query param
-    const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
-
-    if (isNaN(requesterId) || requesterId <= 0) {
-      res.status(400).json({
-        error: "Requester ID is required to retrieve ticket details",
-        code: "MISSING_REQUESTER_ID",
+    if (!sessionUserId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
       });
       return;
     }
+
+    const prisma = getPrisma();
 
     // 2. Parse path parameter (:idOrNumber)
     const param = String(req.params.idOrNumber).trim();
@@ -478,11 +883,27 @@ app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
       },
     });
 
-    // 4. Ownership verification & Not Found handling
-    if (!ticket || ticket.requesterId !== requesterId) {
+    if (!ticket) {
+      res.status(404).json({
+        error: "Ticket not found",
+        code: "TICKET_NOT_FOUND",
+      });
+      return;
+    }
+
+    // 4. Ownership verification
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
       res.status(404).json({
         error: "Ticket not found or you do not have permission to view it",
         code: "TICKET_NOT_FOUND",
+      });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: role cannot view tickets",
+        code: "FORBIDDEN_ROLE",
       });
       return;
     }
@@ -528,7 +949,1006 @@ app.get("/api/tickets/:idOrNumber", async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// Attachment Lifecycle Endpoints (Lab 2 Issue 7)
+// Ticket Operations Endpoints (Lab 3 Issue #4 & IT Staff Workflow)
+// ---------------------------------------------------------------------------
+
+// PATCH /api/tickets/:id/claim — Claim ticket ownership (IT Staff & Admin ONLY)
+app.patch("/api/tickets/:id/claim", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden: role cannot claim tickets", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = parseInt(String(req.params.id), 10);
+    if (isNaN(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (ticket.ownerId !== null && ticket.ownerId !== sessionUserId) {
+      res.status(409).json({ error: "Ticket is already assigned to another IT staff member", code: "TICKET_ALREADY_ASSIGNED" });
+      return;
+    }
+
+    const nextStatus = ticket.status === "NEW" ? "OPEN" : ticket.status;
+    if (ticket.status === "CLOSED" || ticket.status === "CANCELLED") {
+      res.status(409).json({ error: "Ticket is no longer claimable", code: "TICKET_NOT_CLAIMABLE" });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        ownerId: sessionUserId,
+        status: nextStatus,
+      },
+      include: {
+        owner: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+
+    res.status(200).json({
+      data: updated,
+      message: "Ticket ownership claimed successfully",
+    });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to claim ticket", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// GET /api/assignable-users — Active ticket owners for IT Staff / Admin
+app.get("/api/assignable-users", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden: role cannot view assignable users", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const users = await getPrisma().user.findMany({
+      where: {
+        isActive: true,
+        role: { in: ["IT_STAFF", "ADMINISTRATOR"] },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+
+    res.status(200).json(users);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch assignable users", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/tickets/:id/assign — Assign ticket ownership (IT Staff & Admin ONLY)
+app.patch("/api/tickets/:id/assign", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden: role cannot assign tickets", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = parseInt(String(req.params.id), 10);
+    const { ownerId } = req.body || {};
+    const targetOwnerId = parseInt(String(ownerId), 10);
+
+    if (isNaN(ticketId) || isNaN(targetOwnerId)) {
+      res.status(400).json({ error: "Invalid ticket ID or owner ID", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: targetOwnerId } });
+    if (!targetUser || !targetUser.isActive || (targetUser.role !== "IT_STAFF" && targetUser.role !== "ADMINISTRATOR")) {
+      res.status(400).json({ error: "Target owner must be an active IT Staff or Administrator", code: "INVALID_OWNER" });
+      return;
+    }
+
+    if (ticket.status === "CLOSED" || ticket.status === "CANCELLED") {
+      res.status(409).json({ error: "Ticket ownership cannot be reassigned after closure", code: "TICKET_NOT_ASSIGNABLE" });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        ownerId: targetOwnerId,
+        status: ticket.status === "NEW" ? "OPEN" : ticket.status,
+      },
+      include: { owner: { select: { id: true, name: true } } },
+    });
+
+    res.status(200).json({ data: updated, message: "Ticket reassigned successfully" });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to assign ticket", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/tickets/:id/priority — Update IT Priority (IT Staff & Admin ONLY)
+app.patch("/api/tickets/:id/priority", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden: role cannot update IT priority", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = parseInt(String(req.params.id), 10);
+    const { itPriority } = req.body || {};
+
+    if (isNaN(ticketId) || !VALID_PRIORITY_LEVELS.includes(String(itPriority) as any)) {
+      res.status(400).json({ error: "Invalid priority value", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const existingTicket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!existingTicket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: { itPriority: String(itPriority).toUpperCase() as any },
+    });
+
+    res.status(200).json({ data: updated, message: `IT Priority updated to ${itPriority}` });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to update IT priority", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/tickets/:id/status — Update ticket status
+app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const ticketId = parseInt(String(req.params.id), 10);
+    if (isNaN(ticketId)) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const { status, resolutionSummary } = req.body || {};
+    const requestedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
+
+    if (!requestedStatus || !(VALID_TICKET_STATUSES as readonly string[]).includes(requestedStatus)) {
+      res.status(400).json({ error: "Invalid ticket status", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (sessionRole === "REQUESTER") {
+      if (ticket.requesterId !== sessionUserId) {
+        res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+        return;
+      }
+
+      const allowedStatuses = REQUESTER_ALLOWED_STATUS_UPDATES[ticket.status] ?? [];
+      if (!allowedStatuses.includes(requestedStatus)) {
+        res.status(403).json({ error: "Requesters cannot set this status", code: "FORBIDDEN_STATUS_TRANSITION" });
+        return;
+      }
+    } else if (isRoleStaffOrAdmin(sessionRole)) {
+      if (!isValidStatusTransition(ticket.status, requestedStatus)) {
+        res.status(422).json({
+          error: `Invalid status transition from ${ticket.status} to ${requestedStatus}`,
+          code: "INVALID_STATUS_TRANSITION",
+        });
+        return;
+      }
+    } else {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    if (requestedStatus === "RESOLVED" && (!resolutionSummary || String(resolutionSummary).trim().length < 5)) {
+      res.status(422).json({
+        error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
+        code: "RESOLUTION_SUMMARY_REQUIRED",
+      });
+      return;
+    }
+
+    if (requestedStatus === "CLOSED" && ticket.status !== "RESOLVED") {
+      res.status(422).json({
+        error: "A resolved ticket is required before it can be closed",
+        code: "INVALID_STATUS_TRANSITION",
+      });
+      return;
+    }
+
+    if (requestedStatus === "CANCELLED" && ticket.status === "CLOSED") {
+      res.status(422).json({
+        error: "A closed ticket cannot be cancelled",
+        code: "INVALID_STATUS_TRANSITION",
+      });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: requestedStatus as any,
+        resolutionSummary: requestedStatus === "RESOLVED" || requestedStatus === "CLOSED"
+          ? resolutionSummary
+            ? String(resolutionSummary).trim()
+            : ticket.resolutionSummary
+          : ticket.resolutionSummary,
+      },
+    });
+
+    res.status(200).json({ data: updated, message: `Ticket status updated to ${requestedStatus}` });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to update ticket status", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Public Comments & Internal Notes Endpoints
+// ---------------------------------------------------------------------------
+
+// GET /api/tickets/:id/comments — List Public Comments
+app.get("/api/tickets/:id/comments", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const comments = await prisma.publicComment.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: "asc" },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+
+    res.status(200).json(comments);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch comments", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/comments — Add Public Comment
+app.post("/api/tickets/:id/comments", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    const { content } = req.body || {};
+    const trimmed = typeof content === "string" ? content.trim() : "";
+
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+    if (!trimmed || trimmed.length > 1000) {
+      res.status(400).json({ error: "Comment content must be between 1 and 1000 characters", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const comment = await prisma.publicComment.create({
+      data: {
+        ticketId,
+        authorId: sessionUserId,
+        content: trimmed,
+      },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+
+    res.status(201).json({ data: comment, message: "Public comment posted" });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to post comment", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// GET /api/tickets/:id/notes — List Internal Notes (IT Staff & Admin ONLY)
+app.get("/api/tickets/:id/notes", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "IT_STAFF" && sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: Requesters cannot access internal notes", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+    const notes = await prisma.internalNote.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: "asc" },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+
+    res.status(200).json(notes);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch internal notes", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/notes — Add Internal Note (IT Staff & Admin ONLY)
+app.post("/api/tickets/:id/notes", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "IT_STAFF" && sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: Requesters cannot create internal notes", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    const { content } = req.body || {};
+    const trimmed = typeof content === "string" ? content.trim() : "";
+
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+    if (!trimmed || trimmed.length > 1000) {
+      res.status(400).json({ error: "Note content must be between 1 and 1000 characters", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+    const note = await prisma.internalNote.create({
+      data: {
+        ticketId,
+        authorId: sessionUserId,
+        content: trimmed,
+      },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+
+    res.status(201).json({ data: note, message: "Internal note recorded" });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to record internal note", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/problem-appears-resolved — Requester resolution indication
+app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+    if (sessionRole !== "REQUESTER") {
+      res.status(403).json({ error: "Only Requesters can submit this indication", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+    if (ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+    if (ticket.status !== "IN_PROGRESS" && ticket.status !== "WAITING_FOR_REQUESTER") {
+      res.status(422).json({ error: "The ticket is not in a state that can be marked as resolved", code: "INVALID_STATUS_TRANSITION" });
+      return;
+    }
+
+    const content = "The requester indicates that the problem appears resolved.";
+    const [updatedTicket, comment] = await prisma.$transaction([
+      prisma.ticket.update({ where: { id: ticketId }, data: { status: "RESOLVED" } }),
+      prisma.publicComment.create({
+        data: { ticketId, authorId: sessionUserId, content },
+        include: { author: { select: { id: true, name: true, role: true } } },
+      }),
+    ]);
+
+    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Problem marked as appearing resolved" });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to record resolution indication", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// User Management Endpoints (Admin ONLY)
+// ---------------------------------------------------------------------------
+
+// GET /api/users — List Users with optional search and role filter (Admin ONLY)
+app.get("/api/users", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const { search, role } = req.query;
+
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (role && (typeof role !== "string" || !VALID_USER_ROLES.includes(role))) {
+      res.status(400).json({
+        error: "Invalid role filter",
+        code: "INVALID_ROLE",
+      });
+      return;
+    }
+
+    const where: any = {};
+    if (role) {
+      where.role = role;
+    }
+
+    if (search && typeof search === "string" && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { name: { contains: term, mode: "insensitive" } },
+        { email: { contains: term, mode: "insensitive" } },
+      ];
+    }
+
+    const prisma = getPrisma();
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        department: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json(users);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch users", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// GET /api/users/:id — Get User Detail (Admin ONLY)
+app.get("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        department: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    res.status(200).json({ data: user });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to fetch user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/users — Create User with one role & initial password (Admin ONLY)
+app.post("/api/users", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const { name, email, role, isActive, initialPassword } = req.body || {};
+
+    // Validate name
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "name", message: "Full name is required" }],
+      });
+      return;
+    }
+
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || typeof email !== "string" || !emailRegex.test(email.trim())) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "email", message: "Valid email address is required" }],
+      });
+      return;
+    }
+
+    // Validate role (exactly one permitted role)
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (!role || typeof role !== "string" || !VALID_USER_ROLES.includes(role)) {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "role", message: "Role must be exactly one of: REQUESTER, IT_STAFF, ADMINISTRATOR" }],
+      });
+      return;
+    }
+
+    // Validate initialPassword
+    if (!initialPassword || typeof initialPassword !== "string") {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: "Initial password is required" }],
+      });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(initialPassword);
+    if (!policy.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: policy.errors.join("; ") }],
+      });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const prisma = getPrisma();
+
+    // Check duplicate email
+    const existing = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: cleanEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (existing) {
+      res.status(409).json({
+        error: "Email is already registered",
+        code: "EMAIL_ALREADY_EXISTS",
+        details: [{ field: "email", message: "Email is already registered" }],
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+    const newUser = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        role: role as any,
+        isActive: isActive !== undefined ? Boolean(isActive) : true,
+        passwordHash,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json({
+      data: newUser,
+      message: "User account created successfully",
+    });
+  } catch (_err) {
+    console.error("POST /api/users error:", _err);
+    res.status(500).json({ error: "Failed to create user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/users/:id — Update User (Name, Email, Role, Activation) (Admin ONLY)
+app.patch("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    const { name, email, role, isActive } = req.body || {};
+
+    // Validate name if provided
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({
+          error: "Name cannot be empty",
+          code: "VALIDATION_ERROR",
+          details: [{ field: "name", message: "Name cannot be empty" }],
+        });
+        return;
+      }
+    }
+
+    // Validate role if provided
+    const VALID_USER_ROLES = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+    if (role !== undefined) {
+      if (typeof role !== "string" || !VALID_USER_ROLES.includes(role)) {
+        res.status(400).json({
+          error: "Invalid role value",
+          code: "INVALID_ROLE",
+          details: [{ field: "role", message: "Role must be exactly one of: REQUESTER, IT_STAFF, ADMINISTRATOR" }],
+        });
+        return;
+      }
+    }
+
+    // Validate email if provided
+    if (email !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (typeof email !== "string" || !emailRegex.test(email.trim())) {
+        res.status(400).json({
+          error: "Valid email is required",
+          code: "VALIDATION_ERROR",
+          details: [{ field: "email", message: "Valid email address is required" }],
+        });
+        return;
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail !== targetUser.email.toLowerCase()) {
+        const dup = await prisma.user.findFirst({
+          where: {
+            email: { equals: cleanEmail, mode: "insensitive" },
+            id: { not: targetUserId },
+          },
+        });
+        if (dup) {
+          res.status(409).json({
+            error: "Email is already registered",
+            code: "EMAIL_ALREADY_EXISTS",
+            details: [{ field: "email", message: "Email is already registered" }],
+          });
+          return;
+        }
+      }
+    }
+
+    // Guardrail: Cannot deactivate own Administrator account
+    if (isActive === false && targetUserId === sessionUserId) {
+      res.status(400).json({
+        error: "Cannot deactivate your own active Administrator account",
+        code: "SELF_DEACTIVATION_FORBIDDEN",
+      });
+      return;
+    }
+
+    // Guardrail: Cannot remove or deactivate the last active Administrator
+    const isDeactivating = isActive === false;
+    const isDemotingAdmin = role !== undefined && role !== "ADMINISTRATOR";
+
+    if (targetUser.role === "ADMINISTRATOR" && targetUser.isActive && (isDeactivating || isDemotingAdmin)) {
+      const activeAdminCount = await prisma.user.count({
+        where: {
+          role: "ADMINISTRATOR",
+          isActive: true,
+        },
+      });
+
+      if (activeAdminCount <= 1) {
+        res.status(400).json({
+          error: "Cannot remove or deactivate the last active Administrator. At least one active Administrator must remain.",
+          code: "LAST_ADMIN_PROTECTION",
+        });
+        return;
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+        ...(email !== undefined && { email: email.trim().toLowerCase() }),
+        ...(role !== undefined && { role: role as any }),
+        ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      data: updated,
+      message: "User updated successfully",
+    });
+  } catch (_err) {
+    console.error("PATCH /api/users/:id error:", _err);
+    res.status(500).json({ error: "Failed to update user", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/users/:id/reset-password — Set new initial password requiring change at next login (Admin ONLY)
+app.post("/api/users/:id/reset-password", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (sessionRole !== "ADMINISTRATOR") {
+      res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const targetUserId = parseInt(req.params.id, 10);
+    if (isNaN(targetUserId)) {
+      res.status(400).json({ error: "Invalid user ID", code: "INVALID_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+      return;
+    }
+
+    const { initialPassword } = req.body || {};
+    if (!initialPassword || typeof initialPassword !== "string") {
+      res.status(400).json({
+        error: "Validation failed",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: "Initial password is required" }],
+      });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(initialPassword);
+    if (!policy.isValid) {
+      res.status(400).json({
+        error: "Password policy violation",
+        code: "VALIDATION_ERROR",
+        details: [{ field: "initialPassword", message: policy.errors.join("; ") }],
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+      },
+    });
+
+    res.status(200).json({
+      message: "New initial password set. User will be required to change it at next login.",
+    });
+  } catch (_err) {
+    console.error("POST /api/users/:id/reset-password error:", _err);
+    res.status(500).json({ error: "Failed to reset initial password", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// DELETE /api/users/:id — Hard deletion is prohibited by Business Rule (BR-25)
+app.delete("/api/users/:id", async (req: Request, res: Response) => {
+  const sessionUserId = req.session?.userId;
+  const sessionRole = req.session?.role;
+  if (!sessionUserId) {
+    res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+    return;
+  }
+  if (sessionRole !== "ADMINISTRATOR") {
+    res.status(403).json({ error: "Forbidden: User management requires Administrator role", code: "FORBIDDEN_ROLE" });
+    return;
+  }
+
+  res.status(400).json({
+    error: "User deletion is not permitted. Deactivate account instead.",
+    code: "USER_DELETION_FORBIDDEN",
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Attachment Lifecycle Endpoints (Lab 2 Issue 7 + Lab 3 Security Migration)
 // ---------------------------------------------------------------------------
 
 // POST /api/tickets/:idOrNumber/attachments — Upload attachment to an owned ticket
@@ -537,19 +1957,31 @@ app.post(
   upload.single("file"),
   async (req: Request, res: Response) => {
     try {
-      const prisma = getPrisma();
-
-      // 1. Resolve requesterId
+      const sessionUserId = req.session?.userId;
+      const sessionRole = req.session?.role;
       const rawRequesterId = req.headers["x-requester-id"] ?? req.body.requesterId ?? req.query.requesterId;
-      const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-      if (isNaN(requesterId) || requesterId <= 0) {
+      let requesterId: number;
+      if (sessionUserId) {
+        requesterId = sessionUserId;
+      } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+        requesterId = parseInt(String(rawRequesterId), 10);
+        if (isNaN(requesterId) || requesterId <= 0) {
+          res.status(400).json({
+            error: "Requester ID is required to upload attachments",
+            code: "MISSING_REQUESTER_ID",
+          });
+          return;
+        }
+      } else {
         res.status(400).json({
           error: "Requester ID is required to upload attachments",
           code: "MISSING_REQUESTER_ID",
         });
         return;
       }
+
+      const prisma = getPrisma();
 
       // 2. Parse target ticket :idOrNumber
       const param = String(req.params.idOrNumber).trim();
@@ -569,7 +2001,6 @@ app.post(
         },
       });
 
-      // 3. Ownership & Existence check
       if (!ticket || ticket.requesterId !== requesterId) {
         res.status(404).json({
           error: "Ticket not found or permission denied",
@@ -645,19 +2076,31 @@ app.post(
 // GET /api/attachments/:id/metadata — Get metadata for an owned attachment
 app.get("/api/attachments/:id/metadata", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
-
-    // 1. Resolve requesterId
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
     const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-    if (isNaN(requesterId) || requesterId <= 0) {
+    let requesterId: number;
+    if (sessionUserId) {
+      requesterId = sessionUserId;
+    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+      requesterId = parseInt(String(rawRequesterId), 10);
+      if (isNaN(requesterId) || requesterId <= 0) {
+        res.status(400).json({
+          error: "Requester ID is required to fetch attachment metadata",
+          code: "MISSING_REQUESTER_ID",
+        });
+        return;
+      }
+    } else {
       res.status(400).json({
         error: "Requester ID is required to fetch attachment metadata",
         code: "MISSING_REQUESTER_ID",
       });
       return;
     }
+
+    const prisma = getPrisma();
 
     const attachmentId = parseInt(String(req.params.id), 10);
     if (isNaN(attachmentId) || attachmentId <= 0) {
@@ -705,19 +2148,31 @@ app.get("/api/attachments/:id/metadata", async (req: Request, res: Response) => 
 // GET /api/attachments/:id/download — Download binary content of an active attachment
 app.get("/api/attachments/:id/download", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
-
-    // 1. Resolve requesterId
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
     const rawRequesterId = req.headers["x-requester-id"] ?? req.query.requesterId;
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-    if (isNaN(requesterId) || requesterId <= 0) {
+    let requesterId: number;
+    if (sessionUserId) {
+      requesterId = sessionUserId;
+    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+      requesterId = parseInt(String(rawRequesterId), 10);
+      if (isNaN(requesterId) || requesterId <= 0) {
+        res.status(400).json({
+          error: "Requester ID is required to download attachments",
+          code: "MISSING_REQUESTER_ID",
+        });
+        return;
+      }
+    } else {
       res.status(400).json({
         error: "Requester ID is required to download attachments",
         code: "MISSING_REQUESTER_ID",
       });
       return;
     }
+
+    const prisma = getPrisma();
 
     const attachmentId = parseInt(String(req.params.id), 10);
     if (isNaN(attachmentId) || attachmentId <= 0) {
@@ -784,19 +2239,31 @@ app.get("/api/attachments/:id/download", async (req: Request, res: Response) => 
 // DELETE /api/attachments/:id — Soft remove attachment with audit reason
 app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
   try {
-    const prisma = getPrisma();
-
-    // 1. Resolve requesterId
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
     const rawRequesterId = req.headers["x-requester-id"] ?? req.body.requesterId ?? req.query.requesterId;
-    const requesterId = rawRequesterId !== undefined ? parseInt(String(rawRequesterId), 10) : NaN;
 
-    if (isNaN(requesterId) || requesterId <= 0) {
+    let requesterId: number;
+    if (sessionUserId) {
+      requesterId = sessionUserId;
+    } else if (rawRequesterId !== undefined && rawRequesterId !== null && rawRequesterId !== "") {
+      requesterId = parseInt(String(rawRequesterId), 10);
+      if (isNaN(requesterId) || requesterId <= 0) {
+        res.status(400).json({
+          error: "Requester ID is required to remove attachments",
+          code: "MISSING_REQUESTER_ID",
+        });
+        return;
+      }
+    } else {
       res.status(400).json({
         error: "Requester ID is required to remove attachments",
         code: "MISSING_REQUESTER_ID",
       });
       return;
     }
+
+    const prisma = getPrisma();
 
     const attachmentId = parseInt(String(req.params.id), 10);
     if (isNaN(attachmentId) || attachmentId <= 0) {
@@ -850,7 +2317,7 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
         isRemoved: true,
         removedAt: new Date(),
         removedReason: reason,
-        removedByRequesterId: requesterId,
+        removedByUserId: requesterId,
       },
     });
 

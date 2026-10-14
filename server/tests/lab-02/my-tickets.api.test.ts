@@ -15,8 +15,8 @@ describe("Lab 2 — Issue #5: My Tickets API Tests (GET /api/tickets)", () => {
     const prisma = getPrisma();
 
     // Fetch active requesters
-    const activeRequesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const activeRequesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
       orderBy: { id: "asc" },
       take: 2,
     });

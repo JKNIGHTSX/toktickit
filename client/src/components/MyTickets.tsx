@@ -8,7 +8,7 @@ import {
   PriorityLevel,
   TicketStatus,
 } from "../api.js";
-import { useRequester } from "../context/RequesterContext.js";
+import { useAuth } from "../context/AuthContext.js";
 
 interface MyTicketsProps {
   onCreateTicket?: () => void;
@@ -16,7 +16,7 @@ interface MyTicketsProps {
 }
 
 export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
-  const { currentRequester } = useRequester();
+  const { user } = useAuth();
 
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMetadata>({
@@ -64,7 +64,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
 
   // Fetch Tickets when filters / pagination / requester change
   const loadTickets = useCallback(async () => {
-    if (!currentRequester) return;
+    if (!user) return;
 
     setLoading(true);
     setError(null);
@@ -72,7 +72,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
     try {
       const res = await fetchTickets(
         {
-          requesterId: currentRequester.id,
+          requesterId: user.id,
           page,
           pageSize,
           search: search.trim() || undefined,
@@ -83,7 +83,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
           sortBy,
           sortOrder,
         },
-        currentRequester.id
+        user.id
       );
 
       setTickets(res.data);
@@ -94,7 +94,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
       setLoading(false);
     }
   }, [
-    currentRequester,
+    user,
     page,
     pageSize,
     search,
@@ -155,8 +155,10 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
       NEW: { backgroundColor: "#EAF6EF", color: "#006B3C", border: "1px solid #A3D9B8" },
       OPEN: { backgroundColor: "#E3F2FD", color: "#1565C0", border: "1px solid #BBDEFB" },
       IN_PROGRESS: { backgroundColor: "#E8F5E9", color: "#2E7D32", border: "1px solid #C8E6C9" },
+      WAITING_FOR_REQUESTER: { backgroundColor: "#F3E5F5", color: "#7B1FA2", border: "1px solid #E1BEE7" },
       RESOLVED: { backgroundColor: "#ECEFF1", color: "#455A64", border: "1px solid #CFD8DC" },
       CLOSED: { backgroundColor: "#F5F5F5", color: "#616161", border: "1px solid #E0E0E0" },
+      REOPENED: { backgroundColor: "#FFF3E0", color: "#EF6C00", border: "1px solid #FFE0B2" },
       CANCELLED: { backgroundColor: "#FFEBEE", color: "#C62828", border: "1px solid #FFCDD2" },
     };
 
@@ -164,8 +166,10 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
       NEW: "NEW",
       OPEN: "OPEN",
       IN_PROGRESS: "IN PROGRESS",
+      WAITING_FOR_REQUESTER: "WAITING",
       RESOLVED: "RESOLVED",
       CLOSED: "CLOSED",
+      REOPENED: "REOPENED",
       CANCELLED: "CANCELLED",
     };
 

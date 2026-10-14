@@ -17,7 +17,7 @@ describe("Issue #7: Attachment Lifecycle API Tests (API-13 to API-20)", () => {
 
   beforeAll(async () => {
     // Fetch active requesters, category, system
-    const requesters = await prisma.requesterUser.findMany({ where: { isActive: true } });
+    const requesters = await prisma.user.findMany({ where: { role: "REQUESTER", isActive: true } });
     expect(requesters.length).toBeGreaterThanOrEqual(2);
     requesterAId = requesters[0].id;
     requesterBId = requesters[1].id;

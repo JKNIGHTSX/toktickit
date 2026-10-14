@@ -26,6 +26,7 @@ export const RequesterProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setError(null);
     try {
       const data = await fetchRequesters();
+
       setRequesters(data);
 
       // Check stored requester ID in localStorage

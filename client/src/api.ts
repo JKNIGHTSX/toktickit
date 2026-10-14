@@ -32,9 +32,6 @@ export async function checkSystem(): Promise<SystemStatus> {
   return { online: true, categories };
 }
 
-// ---------------------------------------------------------------------------
-// Lab 2 — Issue 1: Fetch active Development Requesters
-// ---------------------------------------------------------------------------
 export interface Requester {
   id: number;
   name: string;
@@ -43,8 +40,79 @@ export interface Requester {
   isActive: boolean;
 }
 
+export type UserRole = "REQUESTER" | "IT_STAFF" | "ADMINISTRATOR";
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  department?: string | null;
+  role: UserRole;
+  mustChangePassword: boolean;
+  isActive: boolean;
+}
+
+export async function loginApi(email: string, password: string): Promise<AuthUser> {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const errorObj: any = new Error(data?.error || "Invalid email or password");
+    errorObj.code = data?.code;
+    throw errorObj;
+  }
+
+  return data.data.user;
+}
+
+export async function logoutApi(): Promise<void> {
+  await fetch(`${API_URL}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  const res = await fetch(`${API_URL}/api/auth/me`, {
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const data = await res.json();
+  return data.data;
+}
+
+export async function changePasswordApi(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    const errorObj: any = new Error(data?.error || "Failed to change password");
+    errorObj.code = data?.code;
+    errorObj.details = data?.details;
+    throw errorObj;
+  }
+}
+
 export async function fetchRequesters(): Promise<Requester[]> {
-  const res = await fetch(`${API_URL}/api/requesters`);
+  const res = await fetch(`${API_URL}/api/requesters`, { credentials: "include" });
   if (!res.ok) {
     let errorMsg = "Failed to fetch development requesters";
     try {
@@ -81,7 +149,15 @@ export async function fetchRelatedSystems(): Promise<RelatedSystem[]> {
 // Lab 2 — Issue 3: Ticket Creation API
 // ---------------------------------------------------------------------------
 export type PriorityLevel = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-export type TicketStatus = "NEW" | "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "CANCELLED";
+export type TicketStatus =
+  | "NEW"
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "WAITING_FOR_REQUESTER"
+  | "RESOLVED"
+  | "CLOSED"
+  | "REOPENED"
+  | "CANCELLED";
 
 export interface CreateTicketPayload {
   requesterId: number;
@@ -129,6 +205,80 @@ export interface ApiValidationError {
   error: string;
   code: string;
   details?: { field: string; message: string }[];
+}
+
+// ---------------------------------------------------------------------------
+// Lab 3 — Issue #5: IT Staff Ticket Queue types
+// ---------------------------------------------------------------------------
+export interface TicketQueueItem {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  requester: { id: number; name: string; email: string } | null;
+  category: { id: number; name: string };
+  relatedSystem: { id: number; name: string };
+  summary: string;
+  requestedPriority: PriorityLevel;
+  itPriority: PriorityLevel | null;
+  status: TicketStatus;
+  owner: { id: number; name: string; role: string } | null;
+  ticketOwnerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachmentCount: number;
+}
+
+export type AssignedToFilter = "UNASSIGNED" | "ME" | number | "";
+
+export interface FetchQueueParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  categoryId?: number;
+  requestedPriority?: PriorityLevel;
+  itPriority?: PriorityLevel;
+  status?: TicketStatus;
+  assignedTo?: AssignedToFilter;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export async function fetchStaffQueue(
+  params: FetchQueueParams = {}
+): Promise<{ data: TicketQueueItem[]; pagination: PaginationMetadata }> {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  if (params.search !== undefined && params.search.trim() !== "") {
+    query.set("search", params.search.trim());
+  }
+  if (params.categoryId !== undefined) query.set("categoryId", String(params.categoryId));
+  if (params.requestedPriority !== undefined) query.set("requestedPriority", params.requestedPriority);
+  if (params.itPriority !== undefined) query.set("itPriority", params.itPriority);
+  if (params.status !== undefined) query.set("status", params.status);
+  if (params.assignedTo !== undefined && params.assignedTo !== "") {
+    query.set("assignedTo", String(params.assignedTo));
+  }
+  if (params.sortBy !== undefined) query.set("sortBy", params.sortBy);
+  if (params.sortOrder !== undefined) query.set("sortOrder", params.sortOrder);
+
+  const url = `${API_URL}/api/tickets?${query.toString()}`;
+  const res = await fetch(url, { credentials: "include" });
+
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch ticket queue";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    const err = new Error(errorMsg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return res.json();
 }
 
 export async function createTicket(
@@ -257,18 +407,108 @@ export async function fetchTickets(
 // ---------------------------------------------------------------------------
 export type TicketDetail = Ticket;
 
-export async function fetchTicketDetail(
-  idOrNumber: string | number,
-  requesterId?: number
-): Promise<TicketDetail> {
-  const headers: Record<string, string> = {};
-  if (requesterId !== undefined) {
-    headers["X-Requester-Id"] = String(requesterId);
+export interface AssignableUser {
+  id: number;
+  name: string;
+  email: string;
+  role: "IT_STAFF" | "ADMINISTRATOR";
+  isActive: boolean;
+}
+
+export interface AssignTicketResult {
+  data: {
+    id: number;
+    ownerId: number;
+    owner: { id: number; name: string } | null;
+    status: TicketStatus;
+  };
+  message: string;
+}
+
+export interface UpdateITPriorityResult {
+  data: Pick<Ticket, "id" | "itPriority" | "updatedAt">;
+  message: string;
+}
+
+export interface UpdateTicketStatusResult {
+  data: Pick<Ticket, "id" | "status" | "resolutionSummary" | "updatedAt">;
+  message: string;
+}
+
+export async function fetchAssignableUsers(): Promise<AssignableUser[]> {
+  const res = await fetch(`${API_URL}/api/assignable-users`, { credentials: "include" });
+  if (!res.ok) {
+    let errorMsg = "Failed to fetch assignable users";
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMsg);
   }
 
-  const query = requesterId !== undefined ? `?requesterId=${requesterId}` : "";
-  const url = `${API_URL}/api/tickets/${idOrNumber}${query}`;
-  const res = await fetch(url, { headers });
+  return res.json();
+}
+
+export async function assignTicket(ticketId: number, ownerId: number): Promise<AssignTicketResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/assign`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ ownerId }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to assign ticket");
+  }
+
+  return data;
+}
+
+export async function updateTicketITPriority(
+  ticketId: number,
+  itPriority: PriorityLevel
+): Promise<UpdateITPriorityResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/priority`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ itPriority }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to update IT Priority");
+  }
+
+  return data;
+}
+
+export async function updateTicketStatus(
+  ticketId: number,
+  status: TicketStatus,
+  resolutionSummary?: string
+): Promise<UpdateTicketStatusResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ status, resolutionSummary }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to update ticket status");
+  }
+
+  return data;
+}
+
+export async function fetchTicketDetail(idOrNumber: string | number): Promise<TicketDetail> {
+  const url = `${API_URL}/api/tickets/${idOrNumber}`;
+  const res = await fetch(url, { credentials: "include" });
 
   if (!res.ok) {
     let errorMsg = "Ticket not found or access denied";
@@ -284,6 +524,69 @@ export async function fetchTicketDetail(
   }
 
   return res.json();
+}
+
+export interface TicketComment {
+  id: number;
+  ticketId: number;
+  authorId: number;
+  content: string;
+  createdAt: string;
+  author: { id: number; name: string; role: UserRole };
+}
+
+export type InternalNote = TicketComment;
+
+async function collaborationRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { ...init, credentials: "include" });
+  let payload: any;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = {};
+  }
+  if (!res.ok) {
+    const error = new Error(payload?.error || "Ticket collaboration request failed") as Error & {
+      status: number;
+      code?: string;
+    };
+    error.status = res.status;
+    error.code = payload?.code;
+    throw error;
+  }
+  return payload as T;
+}
+
+export function fetchTicketComments(ticketId: number): Promise<TicketComment[]> {
+  return collaborationRequest<TicketComment[]>(`${API_URL}/api/tickets/${ticketId}/comments`);
+}
+
+export function createTicketComment(ticketId: number, content: string): Promise<{ data: TicketComment; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function fetchInternalNotes(ticketId: number): Promise<InternalNote[]> {
+  return collaborationRequest<InternalNote[]>(`${API_URL}/api/tickets/${ticketId}/notes`);
+}
+
+export function createInternalNote(ticketId: number, content: string): Promise<{ data: InternalNote; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function markTicketProblemResolved(
+  ticketId: number
+): Promise<{ data: { ticket: Ticket; comment: TicketComment }; message: string }> {
+  return collaborationRequest(`${API_URL}/api/tickets/${ticketId}/problem-appears-resolved`, {
+    method: "POST",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +692,118 @@ export async function softRemoveAttachment(
   }
 
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Lab 3 — Issue #8: Administrator User Management API
+// ---------------------------------------------------------------------------
+
+export interface UserAccount {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  department?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive?: boolean;
+  initialPassword: string;
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+export async function fetchUsers(params?: { search?: string; role?: string }): Promise<UserAccount[]> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.role) query.set("role", params.role);
+  const qs = query.toString() ? `?${query.toString()}` : "";
+
+  const res = await fetch(`${API_URL}/api/users${qs}`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch users");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
+}
+
+export async function createUser(payload: CreateUserInput): Promise<UserAccount> {
+  const res = await fetch(`${API_URL}/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to create user");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function updateUser(id: number, payload: UpdateUserInput): Promise<UserAccount> {
+  const res = await fetch(`${API_URL}/api/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to update user");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function resetUserPassword(id: number, initialPassword: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_URL}/api/users/${id}/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ initialPassword }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to set initial password");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
 }
 
 

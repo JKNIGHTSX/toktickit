@@ -9,8 +9,8 @@ import { getPrisma } from "../../src/prisma.js";
 
 async function getSeedIds() {
   const prisma = getPrisma();
-  const requester = await prisma.requesterUser.findFirst({
-    where: { isActive: true },
+  const requester = await prisma.user.findFirst({
+    where: { role: "REQUESTER", isActive: true },
     orderBy: { id: "asc" },
   });
   const category = await prisma.category.findFirst({
@@ -439,7 +439,7 @@ describe("Lab 2 — Issue #3: Create Ticket API Tests", () => {
   describe("POST /api/tickets — Requester ownership & activity", () => {
     it("API-05: returns 403 Forbidden when requester is inactive", async () => {
       const prisma = getPrisma();
-      const inactiveRequester = await prisma.requesterUser.findFirst({
+      const inactiveRequester = await prisma.user.findFirst({
         where: { isActive: false },
       });
 

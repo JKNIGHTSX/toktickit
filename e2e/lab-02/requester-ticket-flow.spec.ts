@@ -5,20 +5,11 @@ test.describe("Lab 2 - Requester Ticket Flow", () => {
     // 1. Open application
     await page.goto("/");
 
-    // 2. Select Development Requester
-    await expect(
-      page.getByText("Select Development Requester")
-    ).toBeVisible();
-
-    const requesterSelect = page.getByRole("combobox");
-    await requesterSelect.selectOption("1");
-
-    const continueButton = page.getByRole("button", {
-      name: /continue/i,
-    });
-
-    await expect(continueButton).toBeEnabled();
-    await continueButton.click();
+    // 2. Sign In as Requester
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await page.getByLabel(/email/i).fill("jennifer.anderson@toktickit.local");
+    await page.locator("#passwordInput").fill("Password123!");
+    await page.getByRole("button", { name: /sign in/i }).click();
 
     // 3. Create Ticket page should be displayed
     await expect(

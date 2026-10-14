@@ -47,24 +47,18 @@ async function expectNoHorizontalOverflow(page: any) {
 
 async function selectRequester(page: any) {
     const myTicketsTab = page.getByRole("button", { name: "My Tickets" });
-    if (await myTicketsTab.isVisible({ timeout: 1000 }).catch(() => false)) {
+    const emailInput = page.getByLabel(/email/i);
+
+    // Wait for page to settle into either authenticated or login state
+    await expect(myTicketsTab.or(emailInput)).toBeVisible({ timeout: 10000 });
+
+    if (await myTicketsTab.isVisible()) {
         return;
     }
 
-    const requesterSelect = page.locator("#dev-requester-select");
-    await expect(requesterSelect).toBeVisible({ timeout: 10000 });
-
-    const options = await requesterSelect.locator("option").count();
-    expect(options).toBeGreaterThan(1);
-
-    await requesterSelect.selectOption({ index: 1 });
-
-    const continueButton = page.getByRole("button", {
-        name: /continue/i,
-    });
-
-    await expect(continueButton).toBeEnabled();
-    await continueButton.click();
+    await emailInput.fill("jennifer.anderson@toktickit.local");
+    await page.locator("#passwordInput").fill("Password123!");
+    await page.getByRole("button", { name: /sign in/i }).click();
 
     await expect(myTicketsTab).toBeVisible({ timeout: 10000 });
 }
