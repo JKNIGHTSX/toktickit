@@ -31,7 +31,18 @@ describe("Lab 3 — Issue #2: User Database Foundation & Data Model Tests", () =
         expect(u.passwordHash).not.toBe("Password123!");
         // bcrypt hashes start with $2a$, $2b$, or $2y$
         expect(u.passwordHash).toMatch(/^\$2[aby]\$/);
-        const matches = await bcrypt.compare("Password123!", u.passwordHash);
+      }
+
+      // Seeded accounts have their passwords hashed from default Password123!
+      const seedUsers = [
+        "admin@toktickit.local",
+        "tech1@toktickit.local",
+        "jennifer.anderson@toktickit.local",
+      ];
+      for (const email of seedUsers) {
+        const u = users.find((user) => user.email === email);
+        expect(u).toBeDefined();
+        const matches = await bcrypt.compare("Password123!", u!.passwordHash);
         expect(matches).toBe(true);
       }
     });
