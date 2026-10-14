@@ -36,7 +36,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [checkAuth]);
 
   const login = async (email: string, password: string) => {
-    setIsLoading(true);
     setError(null);
     try {
       const loggedUser = await loginApi(email, password);
@@ -44,18 +43,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       setError(err?.message || "Invalid email or password");
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const logout = async () => {
-    setIsLoading(true);
     try {
       await logoutApi();
     } finally {
       setUser(null);
-      setIsLoading(false);
     }
   };
 

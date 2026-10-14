@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
-import { app } from "../../src/app.js";
+import { app, STATUS_TRANSITIONS, isValidStatusTransition } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 
 describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
@@ -175,5 +175,199 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
     const invalidRes = await itStaffAgent.get("/api/tickets/not-a-ticket");
     expect(invalidRes.status).toBe(404);
     expect(invalidRes.body.code).toBe("TICKET_NOT_FOUND");
+  });
+
+  describe("UT-02: State Transition Matrix Rule Engine (BR-14)", () => {
+    it("validates permitted status transitions across all states", () => {
+      expect(isValidStatusTransition("NEW", "OPEN")).toBe(true);
+      expect(isValidStatusTransition("NEW", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("OPEN", "IN_PROGRESS")).toBe(true);
+      expect(isValidStatusTransition("OPEN", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("IN_PROGRESS", "WAITING_FOR_REQUESTER")).toBe(true);
+      expect(isValidStatusTransition("IN_PROGRESS", "RESOLVED")).toBe(true);
+      expect(isValidStatusTransition("IN_PROGRESS", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("WAITING_FOR_REQUESTER", "IN_PROGRESS")).toBe(true);
+      expect(isValidStatusTransition("WAITING_FOR_REQUESTER", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("RESOLVED", "CLOSED")).toBe(true);
+      expect(isValidStatusTransition("RESOLVED", "REOPENED")).toBe(true);
+      expect(isValidStatusTransition("RESOLVED", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("REOPENED", "IN_PROGRESS")).toBe(true);
+      expect(isValidStatusTransition("REOPENED", "CANCELLED")).toBe(true);
+    });
+
+    it("rejects forbidden status transitions", () => {
+      expect(isValidStatusTransition("NEW", "RESOLVED")).toBe(false);
+      expect(isValidStatusTransition("NEW", "CLOSED")).toBe(false);
+      expect(isValidStatusTransition("CLOSED", "OPEN")).toBe(false);
+      expect(isValidStatusTransition("CLOSED", "CANCELLED")).toBe(false);
+      expect(isValidStatusTransition("CANCELLED", "OPEN")).toBe(false);
+      expect(STATUS_TRANSITIONS.CLOSED).toHaveLength(0);
+      expect(STATUS_TRANSITIONS.CANCELLED).toHaveLength(0);
+    });
+  });
+
+  describe("API-10: Ticket Ownership Claim (PATCH /api/tickets/:id/claim)", () => {
+    it("allows IT Staff to claim an unassigned ticket", async () => {
+      const prisma = getPrisma();
+      const testClaimTicket = await prisma.ticket.create({
+        data: {
+          ticketNumber: `TKT-CLAIM-${Date.now()}`,
+          requesterId: requesterA.id,
+          categoryId: 1,
+          relatedSystemId: 1,
+          summary: "Claim test ticket",
+          description: "Unassigned ticket for claim test",
+          requestedPriority: "LOW",
+          status: "NEW",
+          ownerId: null,
+        },
+      });
+      createdTicketIds.push(testClaimTicket.id);
+
+      const res = await itStaffAgent.patch(`/api/tickets/${testClaimTicket.id}/claim`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.ownerId).toBe(itStaff.id);
+      expect(res.body.data.status).toBe("OPEN");
+      expect(res.body.message).toContain("claimed successfully");
+    });
+
+    it("rejects claim when ticket is already assigned to another staff", async () => {
+      const res = await itStaffAgent.patch(`/api/tickets/${otherOwnerTicket.id}/claim`);
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("TICKET_ALREADY_ASSIGNED");
+    });
+  });
+
+  describe("API-11: Ticket Ownership Reassignment (PATCH /api/tickets/:id/assign)", () => {
+    it("reassigns ticket to specified active IT Staff", async () => {
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${ownOwnerTicket.id}/assign`)
+        .send({ ownerId: otherStaff.id });
+      expect(res.status).toBe(200);
+      expect(res.body.data.ownerId).toBe(otherStaff.id);
+      expect(res.body.message).toContain("reassigned successfully");
+    });
+
+    it("rejects assignment to an inactive staff member", async () => {
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${ownOwnerTicket.id}/assign`)
+        .send({ ownerId: inactiveStaff.id });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_OWNER");
+    });
+
+    it("rejects assignment to a Requester user", async () => {
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${ownOwnerTicket.id}/assign`)
+        .send({ ownerId: requesterA.id });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_OWNER");
+    });
+  });
+
+  describe("API-12: Update IT Priority (PATCH /api/tickets/:id/priority)", () => {
+    it("updates itPriority to permitted levels", async () => {
+      for (const level of ["LOW", "MEDIUM", "HIGH", "URGENT"]) {
+        const res = await itStaffAgent
+          .patch(`/api/tickets/${ownOwnerTicket.id}/priority`)
+          .send({ itPriority: level });
+        expect(res.status).toBe(200);
+        expect(res.body.data.itPriority).toBe(level);
+      }
+    });
+
+    it("rejects invalid priority values with 400 Bad Request", async () => {
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${ownOwnerTicket.id}/priority`)
+        .send({ itPriority: "SUPER_CRITICAL" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
+  describe("API-13 & API-14: Status Transitions & Resolution Summary (PATCH /api/tickets/:id/status)", () => {
+    it("API-14: rejects transitioning to RESOLVED without resolutionSummary (BR-15)", async () => {
+      const prisma = getPrisma();
+      const testResTicket = await prisma.ticket.create({
+        data: {
+          ticketNumber: `TKT-RES-${Date.now()}`,
+          requesterId: requesterA.id,
+          categoryId: 1,
+          relatedSystemId: 1,
+          summary: "Resolution summary validation ticket",
+          description: "Needs summary before resolve",
+          requestedPriority: "MEDIUM",
+          status: "IN_PROGRESS",
+        },
+      });
+      createdTicketIds.push(testResTicket.id);
+
+      // Without resolutionSummary
+      const missingSummaryRes = await itStaffAgent
+        .patch(`/api/tickets/${testResTicket.id}/status`)
+        .send({ status: "RESOLVED" });
+      expect(missingSummaryRes.status).toBe(422);
+      expect(missingSummaryRes.body.code).toBe("RESOLUTION_SUMMARY_REQUIRED");
+
+      // With resolutionSummary < 5 characters
+      const shortSummaryRes = await itStaffAgent
+        .patch(`/api/tickets/${testResTicket.id}/status`)
+        .send({ status: "RESOLVED", resolutionSummary: "ok" });
+      expect(shortSummaryRes.status).toBe(422);
+      expect(shortSummaryRes.body.code).toBe("RESOLUTION_SUMMARY_REQUIRED");
+    });
+
+    it("API-13: updates status to RESOLVED when valid resolutionSummary is provided", async () => {
+      const prisma = getPrisma();
+      const testResTicket = await prisma.ticket.create({
+        data: {
+          ticketNumber: `TKT-RES-OK-${Date.now()}`,
+          requesterId: requesterA.id,
+          categoryId: 1,
+          relatedSystemId: 1,
+          summary: "Successful resolve test ticket",
+          description: "Testing valid resolution",
+          requestedPriority: "MEDIUM",
+          status: "IN_PROGRESS",
+        },
+      });
+      createdTicketIds.push(testResTicket.id);
+
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${testResTicket.id}/status`)
+        .send({
+          status: "RESOLVED",
+          resolutionSummary: "Replaced faulty battery pack and tested charging.",
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("RESOLVED");
+      expect(res.body.data.resolutionSummary).toBe(
+        "Replaced faulty battery pack and tested charging."
+      );
+    });
+
+    it("rejects invalid status transitions with 422 Unprocessable", async () => {
+      const prisma = getPrisma();
+      const testInvalidTicket = await prisma.ticket.create({
+        data: {
+          ticketNumber: `TKT-INV-TRANS-${Date.now()}`,
+          requesterId: requesterA.id,
+          categoryId: 1,
+          relatedSystemId: 1,
+          summary: "Invalid transition test ticket",
+          description: "Testing invalid transitions",
+          requestedPriority: "LOW",
+          status: "NEW",
+        },
+      });
+      createdTicketIds.push(testInvalidTicket.id);
+
+      // NEW cannot jump directly to RESOLVED or CLOSED
+      const res = await itStaffAgent
+        .patch(`/api/tickets/${testInvalidTicket.id}/status`)
+        .send({ status: "RESOLVED", resolutionSummary: "Cannot skip states" });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe("INVALID_STATUS_TRANSITION");
+    });
   });
 });

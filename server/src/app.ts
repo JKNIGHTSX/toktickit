@@ -72,7 +72,7 @@ const VALID_TICKET_STATUSES = [
 
 const VALID_PRIORITY_LEVELS = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 
-const STATUS_TRANSITIONS: Record<string, string[]> = {
+export const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ["OPEN", "CANCELLED"],
   OPEN: ["IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
@@ -83,16 +83,16 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   CLOSED: [],
 };
 
-const REQUESTER_ALLOWED_STATUS_UPDATES: Record<string, string[]> = {
+export const REQUESTER_ALLOWED_STATUS_UPDATES: Record<string, string[]> = {
   IN_PROGRESS: ["IN_PROGRESS"],
   WAITING_FOR_REQUESTER: ["IN_PROGRESS"],
   RESOLVED: ["REOPENED"],
   REOPENED: ["IN_PROGRESS"],
 };
 
-const isRoleStaffOrAdmin = (role?: string) => role === "IT_STAFF" || role === "ADMINISTRATOR";
+export const isRoleStaffOrAdmin = (role?: string) => role === "IT_STAFF" || role === "ADMINISTRATOR";
 
-const isValidStatusTransition = (currentStatus: string, nextStatus: string) => {
+export const isValidStatusTransition = (currentStatus: string, nextStatus: string) => {
   const transitions = STATUS_TRANSITIONS[currentStatus] ?? [];
   return transitions.includes(nextStatus);
 };
