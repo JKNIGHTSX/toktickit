@@ -1,8 +1,8 @@
 # TokTickIT — Full-Stack IT Service Desk Application
 
-TokTickIT is a full-stack IT service desk web application designed to streamline internal IT support requests for Account & Access, Hardware, Software, and Network issues.
+TokTickIT is a full-stack IT service desk web application designed to streamline internal IT support requests for Account & Access, Hardware, Software, and Network issues. The application supports authenticated Requesters, IT Staff, and Administrators, with role-based ticket workflows and user administration.
 
-The project features a modern React client, Express RESTful API, PostgreSQL database managed via Prisma ORM, strict file upload attachment handling, and automated test coverage across unit, integration, and end-to-end layers.
+The project features a React client, Express REST API, PostgreSQL database managed via Prisma ORM, secure password authentication, session management, file attachment handling, and automated unit, integration, and end-to-end tests.
 
 ---
 
@@ -14,19 +14,22 @@ The project features a modern React client, Express RESTful API, PostgreSQL data
 | **Backend** | Node.js, Express, TypeScript, Multer (File Uploads) |
 | **Database & ORM** | PostgreSQL 16, Prisma ORM |
 | **Testing** | Vitest, Supertest, React Testing Library, Playwright (E2E) |
-| **Workflow** | Git Flow (`main`, `lab2-staging`, `feature/*`), GitHub Projects |
+| **Workflow** | Git Flow (`main`, `lab3-staging`, `feature/*`), GitHub Projects |
 
 ---
 
 ## ✨ Key Features
 
-- 👤 **Requester Context Switching**: Toggle between active requesters in development mode to simulate real user interactions.
+- 🔐 **Authentication & Role-Based Access**: Email/password login with bcrypt-hashed passwords, authenticated sessions, logout, and roles for Requesters, IT Staff, and Administrators.
+- 🔑 **First-Login Password Change**: Users must change their initial or reset password before using the rest of the application.
 - 📋 **Dynamic Reference Data**: Dynamic loading of IT support categories and enterprise related systems.
 - 🎫 **Ticket Lifecycle Management**:
-  - Create tickets with field validations, requested priorities, and category/system associations.
-  - View ticket lists with status badges, priority tags, search filters, category/system filters, and pagination.
-  - Manage status transitions (`NEW` → `OPEN` → `IN_PROGRESS` → `RESOLVED` / `CLOSED` / `CANCELLED`).
-  - Update IT assigned priority and input resolution summaries upon ticket resolution.
+  - Requesters create and track their own tickets; IT Staff and Administrators manage the shared ticket queue.
+  - Search, filter, sort, and paginate tickets, with responsive table and mobile card views.
+  - Claim or reassign tickets, set IT priority, and perform role-appropriate status transitions.
+  - Requesters can flag tickets that appear resolved; staff manage formal resolution.
+- 💬 **Ticket Collaboration**: Public comments are shared with ticket owners and staff; private internal notes are restricted to IT Staff and Administrators.
+- 🧑‍💼 **User Administration**: Administrators can search, create, edit, activate/deactivate users, and reset initial passwords with safeguards for administrator accounts.
 - 📎 **Attachment Management**:
   - Securely upload up to 3 attachments per ticket (PNG, JPG, PDF, TXT, DOCX, max 5MB per file).
   - Download active attachments directly from the ticket detail view.
@@ -128,17 +131,22 @@ npm run dev
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | System health check & DB ping |
-| `GET` | `/api/requesters` | List active development requesters |
-| `GET` | `/api/categories` | List active IT request categories |
-| `GET` | `/api/related-systems` | List active enterprise related systems |
-| `GET` | `/api/tickets` | Search & list tickets (filters: `search`, `categoryId`, `systemId`, `status`, `page`, `limit`) |
-| `POST` | `/api/tickets` | Create a new IT support ticket |
-| `GET` | `/api/tickets/:id` | Fetch ticket details with requester, category, related system, and attachments |
-| `PATCH` | `/api/tickets/:id` | Update ticket status, priority, owner, or resolution summary |
-| `POST` | `/api/tickets/:id/attachments` | Upload file attachment to ticket |
-| `GET` | `/api/attachments/:id/download` | Download ticket file attachment |
-| `DELETE` | `/api/attachments/:id` | Soft-delete file attachment with reason |
+| `GET` | `/api/health` | Service health check |
+| `POST` | `/api/auth/login`, `/api/auth/logout` | Sign in and end the current session |
+| `GET` | `/api/auth/me` | Get the authenticated user's identity and role |
+| `POST` | `/api/auth/change-password` | Change an initial or current password |
+| `GET` | `/api/categories`, `/api/related-systems` | Retrieve ticket form reference data |
+| `GET`, `POST` | `/api/tickets` | List accessible tickets and create a ticket |
+| `GET` | `/api/tickets/:idOrNumber` | Get ticket details |
+| `PATCH` | `/api/tickets/:id/claim`, `/assign`, `/priority`, `/status` | Claim/reassign tickets and manage priority or status |
+| `GET`, `POST` | `/api/tickets/:id/comments` | Read or add public comments |
+| `GET`, `POST` | `/api/tickets/:id/notes` | Read or add role-restricted internal notes |
+| `POST` | `/api/tickets/:id/problem-appears-resolved` | Requester resolution indication |
+| `GET`, `POST`, `PATCH` | `/api/users` and `/api/users/:id` | Administrator user management |
+| `POST` | `/api/users/:id/reset-password` | Set a user's initial password |
+| `POST`, `GET`, `DELETE` | `/api/tickets/:id/attachments`, `/api/attachments/:id/*` | Upload, download, and remove attachments |
+
+See the [Lab 3 API specification](docs/lab-03/api-spec.md) for request/response details and authorization rules.
 
 ---
 
@@ -170,10 +178,10 @@ npx playwright test
 toktickit/
 ├── client/                     # React + Vite + Bootstrap Frontend
 │   ├── src/
-│   │   ├── components/         # Ticket form, listing, detail, requester switcher
-│   │   ├── context/            # Requester React Context & provider
+│   │   ├── components/         # Ticket, authentication, staff, and admin screens
+│   │   ├── context/            # Authentication and requester contexts
 │   │   ├── api.ts              # API client methods
-│   │   └── App.tsx             # Root component with navigation & tabs
+│   │   └── App.tsx             # Root component, navigation, and role-based screens
 │   └── tests/                  # Frontend Vitest test suites
 ├── server/                     # Express + TypeScript + Prisma Backend
 │   ├── prisma/                 # Database schema, migrations & seed scripts
@@ -185,7 +193,8 @@ toktickit/
 │   └── tests/                  # Backend Supertest & unit test suites
 ├── docs/                       # Project Specification & Audit Documentation
 │   ├── lab-01/                 # Lab 1 foundation documentation & test records
-│   └── lab-02/                 # Lab 2 specification, API spec, UI spec, test matrix & reviews
+│   ├── lab-02/                 # Lab 2 specification, API spec, UI spec, test matrix & reviews
+│   └── lab-03/                 # Lab 3 specifications, tests, AI-use and peer review records
 ├── e2e/                        # Playwright End-to-End test suites
 ├── docker-compose.yml          # Docker Compose for PostgreSQL
 ├── playwright.config.ts        # Playwright test configuration
@@ -198,6 +207,6 @@ toktickit/
 ## 🌿 Git & Collaboration Workflow
 
 1. Feature development is performed on dedicated feature branches (`feature/*`).
-2. Pull Requests target staging (`lab2-staging`).
-3. Code review and peer sign-offs are documented under `docs/lab-02/reviewer.md`.
-4. Staging releases are merged into `main` after verification.
+2. Lab 3 feature Pull Requests target `lab3-staging`.
+3. Code review and peer sign-offs are documented in [docs/lab-03/reviewer.md](docs/lab-03/reviewer.md).
+4. Merge the staging release into `main` after verification.
