@@ -6,8 +6,11 @@ import bcrypt from "bcryptjs";
 async function main() {
   const prisma = getPrisma();
 
-  // Pre-hash default password for local development
-  const defaultPasswordHash = await bcrypt.hash("Password123!", 10);
+  // Pre-hash the shared initial password for local development.
+  const defaultPasswordHash = await bcrypt.hash(
+    process.env.SEED_INITIAL_PASSWORD ?? "Password123!",
+    10
+  );
 
   // 1. Seed Categories with descriptions
   const categories = [
@@ -58,7 +61,7 @@ async function main() {
       email: "jennifer.anderson@toktickit.local",
       department: "Marketing",
       role: "REQUESTER" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     {
@@ -66,7 +69,7 @@ async function main() {
       email: "michael.brown@toktickit.local",
       department: "Finance",
       role: "REQUESTER" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     {
@@ -74,7 +77,7 @@ async function main() {
       email: "sarah.johnson@toktickit.local",
       department: "Human Resources",
       role: "REQUESTER" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     {
@@ -82,7 +85,15 @@ async function main() {
       email: "david.lee@toktickit.local",
       department: "Engineering",
       role: "REQUESTER" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
+      isActive: true,
+    },
+    {
+      name: "First Login User",
+      email: "first.login@toktickit.local",
+      department: "Engineering",
+      role: "REQUESTER" as const,
+      mustChangePassword: true,
       isActive: true,
     },
     // Inactive Requester (at least 1)
@@ -100,7 +111,7 @@ async function main() {
       email: "tech1@toktickit.local",
       department: "IT Support",
       role: "IT_STAFF" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     {
@@ -108,7 +119,7 @@ async function main() {
       email: "tech2@toktickit.local",
       department: "IT Infrastructure",
       role: "IT_STAFF" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     {
@@ -116,7 +127,7 @@ async function main() {
       email: "tech3@toktickit.local",
       department: "IT Systems",
       role: "IT_STAFF" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
     // Inactive IT Staff (at least 1)
@@ -134,7 +145,7 @@ async function main() {
       email: "admin@toktickit.local",
       department: "System Administration",
       role: "ADMINISTRATOR" as const,
-      mustChangePassword: false,
+      mustChangePassword: true,
       isActive: true,
     },
   ];
@@ -148,6 +159,9 @@ async function main() {
         department: u.department,
         role: u.role,
         isActive: u.isActive,
+        ...(u.email === "first.login@toktickit.local"
+          ? { passwordHash: defaultPasswordHash, mustChangePassword: true }
+          : {}),
       },
       create: {
         name: u.name,

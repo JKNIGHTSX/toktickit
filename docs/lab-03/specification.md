@@ -272,10 +272,11 @@ model InternalNote {
 2. **Foreign Key Realignment**: Updates `tickets.requesterId` and `attachments.removedByRequesterId` to reference `users.id`.
 3. **Idempotent Seeding (`prisma/seed.ts`)**:
    * Seed creates default accounts using bcrypt (hash rounds = 10):
-     * **Admin**: `admin@toktickit.local` (Role: `ADMINISTRATOR`, Active)
-     * **IT Staff**: `tech1@toktickit.local`, `tech2@toktickit.local`, `tech3@toktickit.local` (Role: `IT_STAFF`, Active), `tech_inactive@toktickit.local` (Inactive IT Staff)
-     * **Requesters**: `jennifer.anderson@toktickit.local`, `michael.brown@toktickit.local`, `sarah.johnson@toktickit.local`, `david.lee@toktickit.local` (Active Requesters), `inactive.user@toktickit.local` (Inactive Requester)
+     * **Admin**: `admin@toktickit.local` (Role: `ADMINISTRATOR`, Active; must change its initial password)
+     * **IT Staff**: `tech1@toktickit.local`, `tech2@toktickit.local`, `tech3@toktickit.local` (Active; must change their initial passwords), `tech_inactive@toktickit.local` (Inactive IT Staff)
+     * **Requesters**: `jennifer.anderson@toktickit.local`, `michael.brown@toktickit.local`, `sarah.johnson@toktickit.local`, `david.lee@toktickit.local` (Active; must change their initial passwords), `first.login@toktickit.local` (Active; must change its initial password), `inactive.user@toktickit.local` (Inactive Requester)
    * Seeds realistic sample Tickets across statuses, priorities, assigned owners, Public Comments, and Internal Notes.
+4. **Existing Account Flag Migration**: Run `npm run prisma:migrate-initial-password-flags` once after deploying. The idempotent migration marks only active accounts whose stored bcrypt hash verifies against the configured initial seed password (`SEED_INITIAL_PASSWORD`, default `Password123!`). It preserves accounts with a different hash, existing `mustChangePassword = true` state, all roles, and inactive-account flags; a migration marker prevents reapplication. Legacy requester rows were already migrated with `mustChangePassword = true`.
 
 ---
 

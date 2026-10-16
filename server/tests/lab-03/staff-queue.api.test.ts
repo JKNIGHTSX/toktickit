@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { afterAll, describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
@@ -22,6 +22,7 @@ describe("Lab 3 — Issue #5: IT Staff Ticket Queue API Tests", () => {
   let requesterUser: any;
   let category: any;
   let relatedSystem: any;
+  const originalPasswordFlags = new Map<number, boolean>();
 
   // Tickets created for filter tests
   let ticketNew: any;
@@ -48,6 +49,9 @@ describe("Lab 3 — Issue #5: IT Staff Ticket Queue API Tests", () => {
     relatedSystem = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
 
     // Ensure test users do not have mustChangePassword set
+    for (const user of [itStaffUser, adminUser, requesterUser]) {
+      originalPasswordFlags.set(user.id, user.mustChangePassword);
+    }
     await prisma.user.updateMany({
       where: { id: { in: [itStaffUser.id, adminUser!.id, requesterUser.id] } },
       data: { mustChangePassword: false },
@@ -137,6 +141,12 @@ describe("Lab 3 — Issue #5: IT Staff Ticket Queue API Tests", () => {
         ownerId: itStaffUser.id,
       },
     });
+  });
+
+  afterAll(async () => {
+    for (const [id, mustChangePassword] of originalPasswordFlags) {
+      await getPrisma().user.update({ where: { id }, data: { mustChangePassword } });
+    }
   });
 
   // ---------------------------------------------------------------------------

@@ -1,10 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
-import { AuthProvider } from "../../src/context/AuthContext.js";
+import { AuthProvider, useAuth } from "../../src/context/AuthContext.js";
 import { Login } from "../../src/components/Login.js";
 
 (globalThis as any).fetch = vi.fn();
+
+const AuthStateProbe: React.FC = () => {
+  const { user } = useAuth();
+  return <div data-testid="must-change-password">{String(user?.mustChangePassword)}</div>;
+};
+
+const firstLoginUser = {
+  id: 10,
+  email: "first.login@toktickit.local",
+  name: "First Login User",
+  role: "REQUESTER",
+  mustChangePassword: true,
+  isActive: true,
+};
 
 describe("Login UI Component (Lab 3 — Issue #3)", () => {
   beforeEach(() => {
@@ -80,11 +94,95 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
     fireEvent.change(screen.getByLabelText(/^password/i), {
       target: { value: "WrongPass123!" },
     });
-
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/invalid email or password/i)).toBeInTheDocument();
+    });
+  });
+
+  it("UI-01: propagates mustChangePassword from a successful login response", async () => {
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
+      if (url.includes("/api/auth/login")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { user: firstLoginUser } }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: "Unauthenticated", code: "UNAUTHENTICATED" }),
+      });
+    });
+
+    render(
+      <AuthProvider>
+        <Login />
+        <AuthStateProbe />
+      </AuthProvider>
+    );
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: firstLoginUser.email },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "Password123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("must-change-password")).toHaveTextContent("true");
+    });
+  });
+
+  it("does not let a late initial session response clear a successful login", async () => {
+    let resolveSessionCheck!: (response: Response) => void;
+    const sessionCheck = new Promise<Response>((resolve) => {
+      resolveSessionCheck = resolve;
+    });
+    ((globalThis as any).fetch as any).mockImplementation((url: string) => {
+      if (url.includes("/api/auth/me")) return sessionCheck;
+      if (url.includes("/api/auth/login")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { user: firstLoginUser } }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+    });
+
+    render(
+      <AuthProvider>
+        <Login />
+        <AuthStateProbe />
+      </AuthProvider>
+    );
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: firstLoginUser.email },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "Password123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("must-change-password")).toHaveTextContent("true");
+    });
+    resolveSessionCheck({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: "Unauthenticated", code: "UNAUTHENTICATED" }),
+    } as Response);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("must-change-password")).toHaveTextContent("true");
     });
   });
 
@@ -119,7 +217,6 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
     fireEvent.change(screen.getByLabelText(/^password/i), {
       target: { value: "Password123!" },
     });
-
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {

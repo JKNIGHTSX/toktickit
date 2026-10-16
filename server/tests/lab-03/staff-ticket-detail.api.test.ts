@@ -19,6 +19,7 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
   let ownOwnerTicket: any;
   let requesterBTicket: any;
   const createdTicketIds: number[] = [];
+  const originalPasswordFlags = new Map<number, boolean>();
 
   beforeAll(async () => {
     const prisma = getPrisma();
@@ -32,6 +33,9 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
       prisma.user.findFirstOrThrow({ where: { email: "admin@toktickit.local" } }),
     ]);
 
+    for (const user of [requesterA, requesterB, itStaff, otherStaff, administrator]) {
+      originalPasswordFlags.set(user.id, user.mustChangePassword);
+    }
     await prisma.user.updateMany({
       where: { id: { in: [requesterA.id, requesterB.id, itStaff.id, otherStaff.id, administrator.id] } },
       data: { mustChangePassword: false },
@@ -79,6 +83,9 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
   afterAll(async () => {
     if (createdTicketIds.length > 0) {
       await getPrisma().ticket.deleteMany({ where: { id: { in: createdTicketIds } } });
+    }
+    for (const [id, mustChangePassword] of originalPasswordFlags) {
+      await getPrisma().user.update({ where: { id }, data: { mustChangePassword } });
     }
   });
 

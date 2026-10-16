@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { afterAll, describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
@@ -15,6 +15,7 @@ describe("Lab 3 — Issue #4: Server-Side Authorization & Requester Migration AP
   let ticketOwnedByA: any;
   let category: any;
   let relatedSystem: any;
+  const originalPasswordFlags = new Map<number, boolean>();
 
   beforeAll(async () => {
     const prisma = getPrisma();
@@ -37,6 +38,9 @@ describe("Lab 3 — Issue #4: Server-Side Authorization & Requester Migration AP
     relatedSystem = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
 
     // Ensure users do not require password change
+    for (const user of [requesterAUser, requesterBUser, itStaffUser, adminUser]) {
+      originalPasswordFlags.set(user.id, user.mustChangePassword);
+    }
     await prisma.user.updateMany({
       where: { id: { in: [requesterAUser.id, requesterBUser.id, itStaffUser.id, adminUser!.id] } },
       data: { mustChangePassword: false },
@@ -80,6 +84,13 @@ describe("Lab 3 — Issue #4: Server-Side Authorization & Requester Migration AP
         status: "NEW",
       },
     });
+  });
+
+  afterAll(async () => {
+    const prisma = getPrisma();
+    for (const [id, mustChangePassword] of originalPasswordFlags) {
+      await prisma.user.update({ where: { id }, data: { mustChangePassword } });
+    }
   });
 
   describe("1. Unauthenticated Requests", () => {

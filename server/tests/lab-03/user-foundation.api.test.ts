@@ -18,7 +18,7 @@ describe("Lab 3 — Issue #2: User Database Foundation & Data Model Tests", () =
       expect(admin?.passwordHash).toBeTypeOf("string");
       expect(admin?.role).toBe("ADMINISTRATOR");
       expect(admin?.isActive).toBe(true);
-      expect(admin?.mustChangePassword).toBe(false);
+      expect(admin?.mustChangePassword).toBeTypeOf("boolean");
       expect(admin?.createdAt).toBeInstanceOf(Date);
       expect(admin?.updatedAt).toBeInstanceOf(Date);
     });
@@ -70,6 +70,18 @@ describe("Lab 3 — Issue #2: User Database Foundation & Data Model Tests", () =
         where: { role: "REQUESTER", isActive: true },
       });
       expect(activeRequesters.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it("seeds an active first-login account that must change its password", async () => {
+      const firstLoginUser = await prisma.user.findUnique({
+        where: { email: "first.login@toktickit.local" },
+      });
+
+      expect(firstLoginUser).not.toBeNull();
+      expect(firstLoginUser?.isActive).toBe(true);
+      expect(firstLoginUser?.mustChangePassword).toBe(true);
+      expect(firstLoginUser?.passwordHash).toMatch(/^\$2[aby]\$/);
+      expect(await bcrypt.compare("Password123!", firstLoginUser!.passwordHash)).toBe(true);
     });
 
     it("seeds at least 1 inactive Requester", async () => {

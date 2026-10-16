@@ -12,6 +12,7 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
   let adminUser: any;
   let itStaffUser: any;
   let requesterUser: any;
+  const originalPasswordFlags = new Map<number, boolean>();
 
   const cleanupTestUsers = async () => {
     const prisma = getPrisma();
@@ -32,10 +33,10 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
   afterAll(async () => {
     await cleanupTestUsers();
     const prisma = getPrisma();
-    if (adminUser) {
+    for (const [id, mustChangePassword] of originalPasswordFlags) {
       await prisma.user.update({
-        where: { id: adminUser.id },
-        data: { isActive: true, role: "ADMINISTRATOR", mustChangePassword: false },
+        where: { id },
+        data: { mustChangePassword },
       });
     }
   });
@@ -60,7 +61,9 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
           passwordHash: hash,
         },
       });
+      originalPasswordFlags.set(adminUser.id, true);
     } else {
+      originalPasswordFlags.set(adminUser.id, adminUser.mustChangePassword);
       await prisma.user.update({
         where: { id: adminUser.id },
         data: { mustChangePassword: false, isActive: true },
@@ -71,6 +74,7 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
       where: { email: "tech1@toktickit.local" },
     });
     if (itStaffUser) {
+      originalPasswordFlags.set(itStaffUser.id, itStaffUser.mustChangePassword);
       await prisma.user.update({
         where: { id: itStaffUser.id },
         data: { mustChangePassword: false, isActive: true },
@@ -81,6 +85,7 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
       where: { email: "jennifer.anderson@toktickit.local" },
     });
     if (requesterUser) {
+      originalPasswordFlags.set(requesterUser.id, requesterUser.mustChangePassword);
       await prisma.user.update({
         where: { id: requesterUser.id },
         data: { mustChangePassword: false, isActive: true },
@@ -178,38 +183,41 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
   });
 
   describe("API-21: Administrator User Creation (POST /api/users)", () => {
-    it("creates a new user with single role and initial password with mustChangePassword=true", async () => {
-      const uniqueEmail = `test.user.${Date.now()}@toktickit.local`;
-      const res = await adminAgent.post("/api/users").send({
-        name: "Test Engineer",
-        email: uniqueEmail,
-        role: "IT_STAFF",
-        isActive: true,
-        initialPassword: "TempPassword123!",
-      });
+    it.each(["REQUESTER", "IT_STAFF", "ADMINISTRATOR"] as const)(
+      "creates a %s account that must change its initial password",
+      async (role) => {
+        const uniqueEmail = `test.user.${role.toLowerCase()}.${Date.now()}@toktickit.local`;
+        const res = await adminAgent.post("/api/users").send({
+          name: "Test Engineer",
+          email: uniqueEmail,
+          role,
+          isActive: true,
+          initialPassword: "TempPassword123!",
+        });
 
-      expect(res.status).toBe(201);
-      expect(res.body.data).toBeDefined();
-      expect(res.body.data.email).toBe(uniqueEmail);
-      expect(res.body.data.role).toBe("IT_STAFF");
-      expect(res.body.data.isActive).toBe(true);
-      expect(res.body.data.mustChangePassword).toBe(true);
-      expect(res.body.data.passwordHash).toBeUndefined();
+        expect(res.status).toBe(201);
+        expect(res.body.data).toBeDefined();
+        expect(res.body.data.email).toBe(uniqueEmail);
+        expect(res.body.data.role).toBe(role);
+        expect(res.body.data.isActive).toBe(true);
+        expect(res.body.data.mustChangePassword).toBe(true);
+        expect(res.body.data.passwordHash).toBeUndefined();
 
-      // Verify the new user can authenticate and is flagged with mustChangePassword
-      const newUserAgent = request.agent(app);
-      const loginRes = await newUserAgent.post("/api/auth/login").send({
-        email: uniqueEmail,
-        password: "TempPassword123!",
-      });
-      expect(loginRes.status).toBe(200);
-      expect(loginRes.body.data.user.mustChangePassword).toBe(true);
+        // Verify the new user can authenticate and is flagged with mustChangePassword
+        const newUserAgent = request.agent(app);
+        const loginRes = await newUserAgent.post("/api/auth/login").send({
+          email: uniqueEmail,
+          password: "TempPassword123!",
+        });
+        expect(loginRes.status).toBe(200);
+        expect(loginRes.body.data.user.mustChangePassword).toBe(true);
 
-      // Verify protected application endpoints are blocked before password change
-      const queueRes = await newUserAgent.get("/api/tickets");
-      expect(queueRes.status).toBe(403);
-      expect(queueRes.body.code).toBe("MUST_CHANGE_PASSWORD");
-    });
+        // Verify protected application endpoints are blocked before password change
+        const queueRes = await newUserAgent.get("/api/tickets");
+        expect(queueRes.status).toBe(403);
+        expect(queueRes.body.code).toBe("MUST_CHANGE_PASSWORD");
+      }
+    );
 
     it("returns 403 Forbidden if non-admin attempts to create a user", async () => {
       const res = await itStaffAgent.post("/api/users").send({
@@ -376,40 +384,79 @@ describe("Lab 3 — Issue #8: Administrator User Management API Tests", () => {
   });
 
   describe("API-25: Set New Initial Password (POST /api/users/:id/reset-password)", () => {
-    it("sets new initial password and forces mustChangePassword=true at next login", async () => {
-      const prisma = getPrisma();
-      const targetUser = await prisma.user.create({
-        data: {
-          name: "Password Reset Target",
-          email: `reset.target.${Date.now()}@toktickit.local`,
-          role: "REQUESTER",
-          isActive: true,
-          mustChangePassword: false,
-          passwordHash: await bcrypt.hash("OldPassword123!", 10),
-        },
-      });
+    it.each(["REQUESTER", "IT_STAFF", "ADMINISTRATOR"] as const)(
+      "resets a %s account to a hashed initial password and requires a change",
+      async (role) => {
+        const prisma = getPrisma();
+        const targetUser = await prisma.user.create({
+          data: {
+            name: "Password Reset Target",
+            email: `reset.target.${role.toLowerCase()}.${Date.now()}@toktickit.local`,
+            role,
+            isActive: true,
+            mustChangePassword: false,
+            passwordHash: await bcrypt.hash("OldPassword123!", 10),
+          },
+        });
 
-      const newInitialPass = "NewInitPass123!";
-      const resetRes = await adminAgent
-        .post(`/api/users/${targetUser.id}/reset-password`)
-        .send({ initialPassword: newInitialPass });
+        const newInitialPass = "NewInitPass123!";
+        const resetRes = await adminAgent
+          .post(`/api/users/${targetUser.id}/reset-password`)
+          .send({ initialPassword: newInitialPass });
 
-      expect(resetRes.status).toBe(200);
-      expect(resetRes.body.message).toContain("New initial password set");
+        expect(resetRes.status).toBe(200);
+        expect(resetRes.body.message).toContain("New initial password set");
 
-      // Verify target user's mustChangePassword in DB is true
-      const reloaded = await prisma.user.findUnique({ where: { id: targetUser.id } });
-      expect(reloaded?.mustChangePassword).toBe(true);
+        // Verify target user's mustChangePassword in DB is true
+        const reloaded = await prisma.user.findUnique({ where: { id: targetUser.id } });
+        expect(reloaded?.mustChangePassword).toBe(true);
+        expect(reloaded?.passwordHash).not.toBe(newInitialPass);
+        expect(await bcrypt.compare(newInitialPass, reloaded!.passwordHash)).toBe(true);
 
-      // Verify target user logs in with new initial password and has mustChangePassword=true
-      const userAgent = request.agent(app);
-      const loginRes = await userAgent.post("/api/auth/login").send({
-        email: targetUser.email,
-        password: newInitialPass,
-      });
-      expect(loginRes.status).toBe(200);
-      expect(loginRes.body.data.user.mustChangePassword).toBe(true);
-    });
+        // Verify target user logs in with new initial password and has mustChangePassword=true
+        const userAgent = request.agent(app);
+        const loginRes = await userAgent.post("/api/auth/login").send({
+          email: targetUser.email,
+          password: newInitialPass,
+        });
+        expect(loginRes.status).toBe(200);
+        expect(loginRes.body.data.user.mustChangePassword).toBe(true);
+
+        const blockedRes = await userAgent.get("/api/tickets");
+        expect(blockedRes.status).toBe(403);
+        expect(blockedRes.body.code).toBe("MUST_CHANGE_PASSWORD");
+
+        const failedChange = await userAgent.post("/api/auth/change-password").send({
+          currentPassword: "WrongInitialPass123!",
+          newPassword: "ChangedUserPass123!",
+          confirmPassword: "ChangedUserPass123!",
+        });
+        expect(failedChange.status).toBe(400);
+        expect(
+          (await prisma.user.findUniqueOrThrow({ where: { id: targetUser.id } })).mustChangePassword
+        ).toBe(true);
+
+        const changeRes = await userAgent.post("/api/auth/change-password").send({
+          currentPassword: newInitialPass,
+          newPassword: "ChangedUserPass123!",
+          confirmPassword: "ChangedUserPass123!",
+        });
+        expect(changeRes.status).toBe(200);
+        expect(
+          (await prisma.user.findUniqueOrThrow({ where: { id: targetUser.id } })).mustChangePassword
+        ).toBe(false);
+
+        await userAgent.post("/api/auth/logout");
+        const subsequentLogin = await request(app).post("/api/auth/login").send({
+          email: targetUser.email,
+          password: "ChangedUserPass123!",
+        });
+        expect(subsequentLogin.status).toBe(200);
+        expect(subsequentLogin.body.data.user.mustChangePassword).toBe(false);
+
+        await prisma.user.delete({ where: { id: targetUser.id } });
+      }
+    );
 
     it("rejects weak initial password failing password policy", async () => {
       const res = await adminAgent

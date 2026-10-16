@@ -1,8 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { afterAll, describe, it, expect } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 import { validatePasswordPolicy } from "../../src/utils/password-policy.js";
+
+let originalTechPasswordFlag: boolean | undefined;
+
+afterAll(async () => {
+  if (originalTechPasswordFlag === undefined) return;
+  await getPrisma().user.update({
+    where: { email: "tech1@toktickit.local" },
+    data: { mustChangePassword: originalTechPasswordFlag },
+  });
+});
 
 describe("Lab 3 — Issue #3: Authentication & First-Login Password Change API Tests", () => {
   describe("UT-01: Password Policy Unit Tests", () => {
@@ -141,33 +151,50 @@ describe("Lab 3 — Issue #3: Authentication & First-Login Password Change API T
   describe("API-04 & API-05: First-Login Mandatory Password Change Journey", () => {
     it("blocks normal application routes when user mustChangePassword=true", async () => {
       const prisma = getPrisma();
-      // Set mustChangePassword = true for David Lee
+      const firstLoginUser = await prisma.user.findUniqueOrThrow({
+        where: { email: "first.login@toktickit.local" },
+      });
       await prisma.user.update({
-        where: { email: "david.lee@toktickit.local" },
+        where: { id: firstLoginUser.id },
         data: { mustChangePassword: true },
       });
 
-      const agent = request.agent(app);
-      const loginRes = await agent.post("/api/auth/login").send({
-        email: "david.lee@toktickit.local",
-        password: "Password123!",
-      });
-      expect(loginRes.status).toBe(200);
-      expect(loginRes.body.data.user.mustChangePassword).toBe(true);
+      try {
+        const agent = request.agent(app);
+        const loginRes = await agent.post("/api/auth/login").send({
+          email: "first.login@toktickit.local",
+          password: "Password123!",
+        });
+        expect(loginRes.status).toBe(200);
+        expect(loginRes.body.data.user.mustChangePassword).toBe(true);
 
-      // Attempting to access protected application endpoints like GET /api/tickets/my (or custom path) returns 403
-      const blockedRes = await agent.get("/api/tickets/my-protected-check");
-      expect(blockedRes.status).toBe(403);
-      expect(blockedRes.body.code).toBe("MUST_CHANGE_PASSWORD");
+        const rejectedChange = await agent.post("/api/auth/change-password").send({
+          currentPassword: "WrongInitialPass123!",
+          newPassword: "ValidNewPass123!",
+          confirmPassword: "ValidNewPass123!",
+        });
+        expect(rejectedChange.status).toBe(400);
+        expect(
+          (await prisma.user.findUniqueOrThrow({ where: { id: firstLoginUser.id } }))
+            .mustChangePassword
+        ).toBe(true);
 
-      // Reset back to false for David Lee
-      await prisma.user.update({
-        where: { email: "david.lee@toktickit.local" },
-        data: { mustChangePassword: false },
-      });
+        const blockedRes = await agent.get("/api/tickets/my-protected-check");
+        expect(blockedRes.status).toBe(403);
+        expect(blockedRes.body.code).toBe("MUST_CHANGE_PASSWORD");
+      } finally {
+        await prisma.user.update({
+          where: { id: firstLoginUser.id },
+          data: { mustChangePassword: firstLoginUser.mustChangePassword },
+        });
+      }
     }, 15000);
 
     it("handles password change validation, confirmation matching, and success", async () => {
+      const techUser = await getPrisma().user.findUniqueOrThrow({
+        where: { email: "tech1@toktickit.local" },
+      });
+      originalTechPasswordFlag = techUser.mustChangePassword;
       const agent = request.agent(app);
       await agent.post("/api/auth/login").send({
         email: "tech1@toktickit.local",

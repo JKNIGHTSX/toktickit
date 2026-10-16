@@ -12,7 +12,7 @@ import { UserManagement } from "./components/UserManagement.js";
 type UiState = "idle" | "loading" | "success" | "error";
 
 function AppContent() {
-  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, successMessage, logout } = useAuth();
 
   const isStaffOrAdmin = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
 
@@ -224,6 +224,11 @@ function AppContent() {
 
       {/* Main Body */}
       <main className="container py-4">
+        {successMessage && (
+          <div className="alert alert-success" role="status" aria-live="polite">
+            {successMessage}
+          </div>
+        )}
         {!isAuthenticated ? (
           <div>
             {/* Primary Login Screen */}

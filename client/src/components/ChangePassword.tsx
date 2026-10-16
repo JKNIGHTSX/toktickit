@@ -49,20 +49,25 @@ export const ChangePassword: React.FC = () => {
   return (
     <div
       className="d-flex align-items-center justify-content-center px-3"
-      style={{ minHeight: "75vh" }}
+      style={{ minHeight: "calc(100dvh - 104px)" }}
     >
-      <div className="w-100" style={{ maxWidth: "460px" }}>
+      <div
+        className="w-100"
+        style={{ maxWidth: "460px", maxHeight: "calc(100dvh - 112px)" }}
+      >
         <div
           className="card shadow-sm border"
           style={{
             borderRadius: "12px",
             borderColor: "#D1D9D4",
             backgroundColor: "#FFFFFF",
+            maxHeight: "calc(100dvh - 112px)",
+            overflowY: "auto",
           }}
         >
-          <div className="card-body p-4">
+          <div className="card-body p-3">
             {/* Header */}
-            <div className="mb-3 text-start">
+            <div className="mb-2 text-start">
               <h1 className="h5 fw-bold mb-1" style={{ color: "#1E2B24" }}>
                 Change Your Password
               </h1>
@@ -90,7 +95,7 @@ export const ChangePassword: React.FC = () => {
 
             {/* Change Password Form */}
             <form onSubmit={handleSubmit} noValidate>
-              <div className="mb-3 text-start">
+              <div className="mb-2 text-start">
                 <label htmlFor="currentPassInput" className="form-label fw-semibold small" style={{ color: "#2D3732" }}>
                   Current (temporary) password
                 </label>
@@ -118,7 +123,7 @@ export const ChangePassword: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mb-3 text-start">
+              <div className="mb-2 text-start">
                 <label htmlFor="newPassInput" className="form-label fw-semibold small" style={{ color: "#2D3732" }}>
                   New password
                 </label>
@@ -145,7 +150,7 @@ export const ChangePassword: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mb-3 text-start">
+              <div className="mb-2 text-start">
                 <label htmlFor="confirmPassInput" className="form-label fw-semibold small" style={{ color: "#2D3732" }}>
                   Confirm new password
                 </label>
@@ -163,7 +168,7 @@ export const ChangePassword: React.FC = () => {
 
               {/* Password Requirements Checklist */}
               <div
-                className="p-3 mb-4 rounded text-start"
+                className="p-2 mb-2 rounded text-start"
                 style={{ backgroundColor: "#F5F7F6", border: "1px solid #E2E8E4", fontSize: "13px" }}
               >
                 <div className="fw-semibold mb-2" style={{ color: "#2D3732" }}>
@@ -206,7 +211,7 @@ export const ChangePassword: React.FC = () => {
                   fontSize: "15px",
                 }}
               >
-                {isSubmitting ? "Updating Password…" : "Continue"}
+                {isSubmitting ? "Changing Password…" : "Change Password"}
               </button>
             </form>
           </div>
