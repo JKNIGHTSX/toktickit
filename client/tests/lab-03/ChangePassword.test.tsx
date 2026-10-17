@@ -202,4 +202,18 @@ describe("ChangePassword UI Component (Lab 3 — Issue #3)", () => {
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(/current password is incorrect/i);
   });
+
+  it("UI-02: password reveal toggles are keyboard focusable (tabIndex is not -1)", () => {
+    render(
+      <AuthProvider>
+        <ChangePassword />
+      </AuthProvider>
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /show password/i });
+    expect(toggleButtons.length).toBeGreaterThan(0);
+    toggleButtons.forEach((btn) => {
+      expect(btn).not.toHaveAttribute("tabindex", "-1");
+    });
+  });
 });

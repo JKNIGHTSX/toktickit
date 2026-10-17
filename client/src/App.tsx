@@ -30,7 +30,7 @@ function AppContent() {
 
   useEffect(() => {
     if (user?.role === "ADMINISTRATOR") {
-      if (view !== "user-management" && view !== "staff-queue" && view !== "ticket-detail") {
+      if (view !== "user-management") {
         setView("user-management");
       }
     } else if (user?.role === "IT_STAFF") {
@@ -82,12 +82,12 @@ function AppContent() {
   const getRoleBadgeStyle = (role?: string) => {
     switch (role) {
       case "ADMINISTRATOR":
-        return { backgroundColor: "#FEF3C7", color: "#92400E" };
+        return { backgroundColor: "#EDE7F6", color: "#512DA8" };
       case "IT_STAFF":
-        return { backgroundColor: "#EBF5FF", color: "#1D4ED8" };
+        return { backgroundColor: "#E1F5FE", color: "#0277BD" };
       case "REQUESTER":
       default:
-        return { backgroundColor: "#EAF6EF", color: "#006B3C" };
+        return { backgroundColor: "#E8F5E9", color: "#2E7D32" };
     }
   };
 
@@ -317,40 +317,9 @@ function AppContent() {
                       👥 User Management
                     </button>
                   </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link ${view === "staff-queue" || view === "ticket-detail" ? "active fw-bold" : ""}`}
-                      id="nav-ticket-queue"
-                      onClick={() => setView("staff-queue")}
-                      style={{
-                        color: view === "staff-queue" || view === "ticket-detail" ? "#006B3C" : "#556B60",
-                        backgroundColor: view === "staff-queue" || view === "ticket-detail" ? "#EAF6EF" : "transparent",
-                        borderColor: view === "staff-queue" || view === "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                      }}
-                    >
-                      🗂 Ticket Queue
-                    </button>
-                  </li>
                 </ul>
 
-                {view === "user-management" && <UserManagement />}
-
-                {view === "ticket-detail" && selectedTicketId !== null && (
-                  <TicketDetail
-                    ticketId={selectedTicketId}
-                    onBack={() => setView("staff-queue")}
-                  />
-                )}
-
-                {view === "staff-queue" && (
-                  <StaffTicketQueue
-                    onSelectTicket={(id) => {
-                      setSelectedTicketId(id);
-                      setView("ticket-detail");
-                    }}
-                    onCreateTicket={() => setView("create-ticket")}
-                  />
-                )}
+                <UserManagement />
               </div>
             ) : isStaffOrAdmin ? (
               /* ── IT Staff Navigation ── */

@@ -920,8 +920,8 @@ export function StaffTicketQueue({ onSelectTicket, onCreateTicket }: StaffTicket
                 fontWeight: page === p ? 700 : 400,
                 cursor: loading ? "default" : "pointer",
                 fontSize: 13,
-                minWidth: 36,
-                minHeight: 36,
+                minWidth: 44,
+                minHeight: 44,
               }}
             >
               {p}
@@ -1077,5 +1077,5 @@ const pageNavBtnStyle = (disabled: boolean): React.CSSProperties => ({
   cursor: disabled ? "not-allowed" : "pointer",
   fontSize: 13,
   fontWeight: 500,
-  minHeight: 36,
+  minHeight: 44,
 });

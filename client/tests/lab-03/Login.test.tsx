@@ -66,6 +66,26 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
     });
   });
 
+  it("UI-01: validates email format on submission", async () => {
+    render(
+      <AuthProvider>
+        <Login />
+      </AuthProvider>
+    );
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "invalid-email-format" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "Password123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/please enter a valid email address/i)).toBeInTheDocument();
+    });
+  });
+
   it("UI-01: displays error banner when authentication fails (401 invalid credentials)", async () => {
     ((globalThis as any).fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/auth/login")) {
@@ -241,5 +261,16 @@ describe("Login UI Component (Lab 3 — Issue #3)", () => {
     fireEvent.click(toggleButton);
 
     expect(passwordInput.type).toBe("text");
+  });
+
+  it("UI-01: password reveal toggle is keyboard focusable (tabIndex is not -1)", () => {
+    render(
+      <AuthProvider>
+        <Login />
+      </AuthProvider>
+    );
+
+    const toggleButton = screen.getByRole("button", { name: /show password/i });
+    expect(toggleButton).not.toHaveAttribute("tabindex", "-1");
   });
 });

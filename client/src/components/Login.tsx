@@ -31,6 +31,12 @@ export const Login: React.FC = () => {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage("Please enter a valid email address");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await login(email.trim(), password);
@@ -145,7 +151,6 @@ export const Login: React.FC = () => {
                     type="button"
                     className="btn btn-outline-secondary"
                     onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     title={showPassword ? "Hide password" : "Show password"}
                     style={{

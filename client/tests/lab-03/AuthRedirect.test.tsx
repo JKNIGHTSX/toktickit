@@ -162,6 +162,23 @@ describe("first-login authentication route guard", () => {
         expect(screen.queryByRole("heading", { name: /change your password/i })).not.toBeInTheDocument();
         expect(screen.getByRole("button", { name: normalPageByRole[role] })).toBeInTheDocument();
       });
+
+      // Role-based navigation isolation assertions
+      if (role === "ADMINISTRATOR") {
+        expect(screen.getByRole("button", { name: /user management/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /ticket queue/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /\+ create ticket/i })).not.toBeInTheDocument();
+      } else if (role === "IT_STAFF") {
+        expect(screen.getByRole("button", { name: /ticket queue/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /user management/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /my tickets/i })).not.toBeInTheDocument();
+      } else if (role === "REQUESTER") {
+        expect(screen.getByRole("button", { name: /\+ create ticket/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /my tickets/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /user management/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /ticket queue/i })).not.toBeInTheDocument();
+      }
+
       expect(screen.getByRole("status")).toHaveTextContent(/password changed successfully/i);
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/auth/change-password"),

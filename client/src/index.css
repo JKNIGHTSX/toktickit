@@ -1,0 +1,24 @@
+/* Zen Green Global Focus and Touch Target Overrides */
+
+/* 2px green focus ring for all interactive elements per Section 6 */
+:focus-visible,
+.form-control:focus,
+.form-select:focus,
+.btn:focus,
+.btn:focus-visible {
+  outline: 2px solid #006B3C !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 2px rgba(0, 107, 60, 0.25) !important;
+  border-color: #006B3C !important;
+}
+
+/* Ensure inputs, selects, and major interactive buttons satisfy min 44x44px touch targets on touch devices/coarse pointers */
+@media (pointer: coarse) {
+  button:not(.btn-close),
+  .form-control,
+  .form-select,
+  .nav-link {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

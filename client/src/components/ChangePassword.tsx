@@ -114,7 +114,6 @@ export const ChangePassword: React.FC = () => {
                     type="button"
                     className="btn btn-outline-secondary"
                     onClick={() => setShowCurrent(!showCurrent)}
-                    tabIndex={-1}
                     aria-label={showCurrent ? "Hide password" : "Show password"}
                     style={{ borderRadius: "0 8px 8px 0", borderColor: "#D1D9D4", backgroundColor: "#F8FAF9" }}
                   >
@@ -142,7 +141,7 @@ export const ChangePassword: React.FC = () => {
                     type="button"
                     className="btn btn-outline-secondary"
                     onClick={() => setShowNew(!showNew)}
-                    tabIndex={-1}
+                    aria-label={showNew ? "Hide password" : "Show password"}
                     style={{ borderRadius: "0 8px 8px 0", borderColor: "#D1D9D4", backgroundColor: "#F8FAF9" }}
                   >
                     {showNew ? "👁️" : "🙈"}
