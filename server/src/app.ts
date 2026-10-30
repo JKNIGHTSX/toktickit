@@ -8,7 +8,7 @@ import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import { getPrisma } from "./prisma.js";
 import { generateTicketNumber } from "./utils/ticket-number.js";
-import { validateTicketInput } from "./utils/validators.js";
+import { validateTicketInput, validateActionTakenInput } from "./utils/validators.js";
 import { validatePasswordPolicy } from "./utils/password-policy.js";
 import {
   validateAttachmentFile,
@@ -1424,6 +1424,339 @@ app.post("/api/tickets/:id/notes", async (req: Request, res: Response) => {
     res.status(201).json({ data: note, message: "Internal note recorded" });
   } catch (_err) {
     res.status(500).json({ error: "Failed to record internal note", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Actions Taken Endpoints (Lab 4 Issue 2)
+// ---------------------------------------------------------------------------
+
+// GET /api/tickets/:id/actions — List Actions Taken for Ticket
+app.get("/api/tickets/:id/actions", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, requesterId: true },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    // Role check: Requester can only view actions on owned tickets
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const actions = await prisma.actionTaken.findMany({
+      where: { ticketId },
+      orderBy: { actionDateTime: "desc" },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({ data: actions });
+  } catch (_err) {
+    console.error("GET /api/tickets/:id/actions error:", _err);
+    res.status(500).json({ error: "Failed to fetch actions taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/actions — Create Action Taken
+app.post("/api/tickets/:id/actions", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    // Role check: IT_STAFF and ADMINISTRATOR only
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: Only IT Staff and Administrators can record Actions Taken",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(403).json({
+        error: "Forbidden: Inactive users cannot perform actions",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, status: true },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (ticket.status === "CLOSED") {
+      res.status(422).json({
+        error: "Cannot add actions taken to a closed ticket",
+        code: "TICKET_CLOSED",
+      });
+      return;
+    }
+
+    const validation = validateActionTakenInput(req.body || {});
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: validation.errors[0]?.message || "Validation failed",
+        code: validation.code || "VALIDATION_ERROR",
+        details: validation.errors,
+      });
+      return;
+    }
+
+    const created = await prisma.actionTaken.create({
+      data: {
+        ticketId,
+        performedById: sessionUserId, // Always bound from authenticated session
+        actionDateTime: validation.sanitized.actionDateTime,
+        actionDescription: validation.sanitized.actionDescription,
+        result: validation.sanitized.result,
+        isFollowUpRequired: validation.sanitized.isFollowUpRequired,
+        followUpNote: validation.sanitized.followUpNote,
+        attachmentNotes: validation.sanitized.attachmentNotes,
+      },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      data: created,
+      message: "Action taken recorded successfully",
+    });
+  } catch (_err) {
+    console.error("POST /api/tickets/:id/actions error:", _err);
+    res.status(500).json({ error: "Failed to create action taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// GET /api/actions/:id — Get single Action Taken record
+app.get("/api/actions/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const actionId = Number(String(req.params.id));
+    if (!Number.isInteger(actionId) || actionId <= 0) {
+      res.status(400).json({ error: "Invalid action ID", code: "INVALID_ACTION_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const action = await prisma.actionTaken.findUnique({
+      where: { id: actionId },
+      include: {
+        ticket: { select: { id: true, requesterId: true } },
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!action) {
+      res.status(404).json({ error: "Action taken not found", code: "ACTION_NOT_FOUND" });
+      return;
+    }
+
+    if (sessionRole === "REQUESTER" && action.ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const { ticket: _ticket, ...actionData } = action;
+    res.status(200).json({ data: actionData });
+  } catch (_err) {
+    console.error("GET /api/actions/:id error:", _err);
+    res.status(500).json({ error: "Failed to fetch action taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/actions/:id — Update Action Taken record
+app.patch("/api/actions/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: Only IT Staff and Administrators can update Actions Taken",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const actionId = Number(String(req.params.id));
+    if (!Number.isInteger(actionId) || actionId <= 0) {
+      res.status(400).json({ error: "Invalid action ID", code: "INVALID_ACTION_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(403).json({
+        error: "Forbidden: Inactive users cannot perform actions",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const existingAction = await prisma.actionTaken.findUnique({
+      where: { id: actionId },
+    });
+
+    if (!existingAction) {
+      res.status(404).json({ error: "Action taken not found", code: "ACTION_NOT_FOUND" });
+      return;
+    }
+
+    // Optimistic Concurrency Check
+    const { expectedUpdatedAt } = req.body || {};
+    if (expectedUpdatedAt !== undefined) {
+      const clientTimestamp = new Date(expectedUpdatedAt).getTime();
+      const serverTimestamp = existingAction.updatedAt.getTime();
+      // Compare with 1000ms window as specified
+      if (isNaN(clientTimestamp) || Math.abs(clientTimestamp - serverTimestamp) > 1000) {
+        res.status(409).json({
+          error: "Action Taken record has been modified by another user. Please refresh and try again.",
+          code: "STALE_UPDATE_CONFLICT",
+        });
+        return;
+      }
+    }
+
+    // Merge existing values for fields not provided
+    const mergedInput: any = {
+      actionDescription: req.body.actionDescription !== undefined ? req.body.actionDescription : existingAction.actionDescription,
+      result: req.body.result !== undefined ? req.body.result : existingAction.result,
+      isFollowUpRequired: req.body.isFollowUpRequired !== undefined ? req.body.isFollowUpRequired : existingAction.isFollowUpRequired,
+      followUpNote: req.body.followUpNote !== undefined ? req.body.followUpNote : existingAction.followUpNote,
+      attachmentNotes: req.body.attachmentNotes !== undefined ? req.body.attachmentNotes : existingAction.attachmentNotes,
+      actionDateTime: req.body.actionDateTime !== undefined ? req.body.actionDateTime : existingAction.actionDateTime.toISOString(),
+    };
+
+    const validation = validateActionTakenInput(mergedInput, { isUpdate: true });
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: validation.errors[0]?.message || "Validation failed",
+        code: validation.code || "VALIDATION_ERROR",
+        details: validation.errors,
+      });
+      return;
+    }
+
+    const updated = await prisma.actionTaken.update({
+      where: { id: actionId },
+      data: {
+        actionDescription: validation.sanitized.actionDescription,
+        result: validation.sanitized.result,
+        isFollowUpRequired: validation.sanitized.isFollowUpRequired,
+        followUpNote: validation.sanitized.followUpNote,
+        attachmentNotes: validation.sanitized.attachmentNotes,
+        actionDateTime: validation.sanitized.actionDateTime,
+      },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      data: updated,
+      message: "Action taken updated successfully",
+    });
+  } catch (_err) {
+    console.error("PATCH /api/actions/:id error:", _err);
+    res.status(500).json({ error: "Failed to update action taken", code: "INTERNAL_SERVER_ERROR" });
   }
 });
 
