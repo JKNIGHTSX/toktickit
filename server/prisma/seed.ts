@@ -305,9 +305,57 @@ async function main() {
           ],
         });
       }
+
+      // Seed Actions Taken for TKT-2026-000101 (multiple technicians)
+      const actionsCount = await prisma.actionTaken.count({ where: { ticketId: ticket.id } });
+      if (actionsCount === 0) {
+        await prisma.actionTaken.createMany({
+          data: [
+            {
+              ticketId: ticket.id,
+              performedById: tech1.id,
+              actionDateTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
+              actionDescription: "Ran battery health diagnostics remotely and confirmed cell degradation.",
+              result: "Battery health at 42% capacity. Ordered replacement battery BAT-992.",
+              isFollowUpRequired: true,
+              followUpNote: "Schedule battery installation upon part delivery.",
+              attachmentNotes: "Battery diagnostic log #BATT-101 saved to local logs.",
+            },
+            {
+              ticketId: ticket.id,
+              performedById: tech2.id,
+              actionDateTime: new Date(Date.now() - 1 * 60 * 60 * 1000),
+              actionDescription: "Received OEM Part #BAT-992 and prepared workspace for physical repair.",
+              result: "Replacement unit inspected and ready for installation.",
+              isFollowUpRequired: false,
+              followUpNote: null,
+              attachmentNotes: null,
+            },
+          ],
+        });
+      }
+    }
+
+    // Seed 1 Action Taken for TKT-2026-000104 (RESOLVED ticket)
+    if (t.ticketNumber === "TKT-2026-000104") {
+      const actionsCount = await prisma.actionTaken.count({ where: { ticketId: ticket.id } });
+      if (actionsCount === 0) {
+        await prisma.actionTaken.create({
+          data: {
+            ticketId: ticket.id,
+            performedById: tech1.id,
+            actionDateTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+            actionDescription: "Replaced black toner cartridge and cleaned paper feed rollers.",
+            result: "Printer self-test succeeded with crisp print quality.",
+            isFollowUpRequired: false,
+            followUpNote: null,
+            attachmentNotes: "Recycled empty toner cartridge at facilities center.",
+          },
+        });
+      }
     }
   }
-  console.log("Seeded realistic tickets, public comments, and internal notes successfully.");
+  console.log("Seeded realistic tickets, public comments, internal notes, and actions taken successfully.");
 }
 
 main()

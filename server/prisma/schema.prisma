@@ -36,6 +36,7 @@ model User {
   attachmentsRemoved Attachment[]    @relation("RemovedByUser")
   publicComments     PublicComment[]
   internalNotes      InternalNote[]
+  actionsPerformed   ActionTaken[]   @relation("ActionPerformer")
 
   @@index([role, isActive])
   @@index([email])
@@ -117,12 +118,14 @@ model Ticket {
   attachments        Attachment[]
   publicComments     PublicComment[]
   internalNotes      InternalNote[]
+  actionsTaken       ActionTaken[]
 
   @@index([requesterId, createdAt(sort: Desc)])
   @@index([ownerId])
   @@index([ticketNumber])
   @@index([categoryId])
   @@index([status])
+  @@index([status, ownerId])
   @@map("tickets")
 }
 
@@ -179,5 +182,29 @@ model Attachment {
 
   @@index([ticketId, isRemoved])
   @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// 7. Actions Taken Model (Lab 4 Issue 2)
+// ---------------------------------------------------------------------------
+model ActionTaken {
+  id                  Int       @id @default(autoincrement())
+  ticketId            Int
+  performedById       Int
+  actionDateTime      DateTime  @default(now())
+  actionDescription   String    @db.Text
+  result              String    @db.Text
+  isFollowUpRequired  Boolean   @default(false)
+  followUpNote        String?   @db.Text
+  attachmentNotes     String?   @db.VarChar(500)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  ticket              Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  performedBy         User      @relation("ActionPerformer", fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, actionDateTime(sort: Desc)])
+  @@index([performedById])
+  @@map("actions_taken")
 }
 
