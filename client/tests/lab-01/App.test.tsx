@@ -8,6 +8,10 @@ describe("App", () => {
     vi.restoreAllMocks();
   });
 
+  beforeEach(() => {
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue(null);
+  });
+
   // WORKED EXAMPLE — provided for you.
   it("renders the TokTickIT heading", () => {
     render(<App />);
@@ -30,7 +34,7 @@ describe("App", () => {
 
     render(<App />);
 
-    const button = screen.getByRole("button", { name: /Check System/i });
+    const button = await screen.findByRole("button", { name: /Check System/i });
     fireEvent.click(button);
 
     expect(await screen.findByText(/Online/i)).toBeInTheDocument();
@@ -47,7 +51,7 @@ describe("App", () => {
 
     render(<App />);
 
-    const button = screen.getByRole("button", { name: /Check System/i });
+    const button = await screen.findByRole("button", { name: /Check System/i });
     fireEvent.click(button);
 
     expect(await screen.findByText(/Offline/i)).toBeInTheDocument();
