@@ -22,6 +22,7 @@ import {
   TicketStatus,
 } from "../api.js";
 import { useAuth } from "../context/AuthContext.js";
+import { ActionsTakenComponent } from "./ActionsTaken.js";
 
 interface TicketDetailProps {
   ticketId: string | number;
@@ -772,6 +773,9 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
               )}
             </div>
           </div>
+
+          {/* Actions Taken Section (Lab 4) */}
+          <ActionsTakenComponent ticketId={ticket.id} ticketStatus={ticket.status} />
 
           <section className="card shadow-sm border mb-4" aria-labelledby="public-comments-heading" style={{ borderColor: "#A3D9B8", borderRadius: "8px" }}>
             <div className="card-header border-bottom" style={{ backgroundColor: "#EAF6EF", borderColor: "#A3D9B8" }}>

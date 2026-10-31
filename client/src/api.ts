@@ -467,6 +467,20 @@ export async function assignTicket(ticketId: number, ownerId: number): Promise<A
   return data;
 }
 
+export async function claimTicket(ticketId: number): Promise<AssignTicketResult> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/claim`, {
+    method: "PATCH",
+    credentials: "include",
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to claim ticket");
+  }
+
+  return data;
+}
+
 export async function updateTicketITPriority(
   ticketId: number,
   itPriority: PriorityLevel
@@ -806,5 +820,106 @@ export async function resetUserPassword(id: number, initialPassword: string): Pr
   return data;
 }
 
+export interface ActionTakenPerformer {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+}
 
+export interface ActionTaken {
+  id: number;
+  ticketId: number;
+  performedById: number;
+  performedBy: ActionTakenPerformer;
+  actionDateTime: string;
+  actionDescription: string;
+  result: string;
+  isFollowUpRequired: boolean;
+  followUpNote: string | null;
+  attachmentNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
+export interface CreateActionTakenInput {
+  actionDescription: string;
+  result: string;
+  isFollowUpRequired?: boolean;
+  followUpNote?: string | null;
+  attachmentNotes?: string | null;
+  actionDateTime?: string;
+}
+
+export interface UpdateActionTakenInput {
+  actionDescription?: string;
+  result?: string;
+  isFollowUpRequired?: boolean;
+  followUpNote?: string | null;
+  attachmentNotes?: string | null;
+  actionDateTime?: string;
+  expectedUpdatedAt?: string;
+}
+
+export async function fetchTicketActions(ticketId: number | string): Promise<ActionTaken[]> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/actions`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch actions taken");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data || [];
+}
+
+export async function createActionTaken(
+  ticketId: number | string,
+  payload: CreateActionTakenInput
+): Promise<{ data: ActionTaken; message: string }> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/actions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to record action taken");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
+}
+
+export async function updateActionTaken(
+  actionId: number | string,
+  payload: UpdateActionTakenInput
+): Promise<{ data: ActionTaken; message: string }> {
+  const res = await fetch(`${API_URL}/api/actions/${actionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to update action taken");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data;
+}
