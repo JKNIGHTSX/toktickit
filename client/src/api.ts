@@ -503,18 +503,31 @@ export async function updateTicketITPriority(
 export async function updateTicketStatus(
   ticketId: number,
   status: TicketStatus,
-  resolutionSummary?: string
+  resolutionSummary?: string,
+  expectedUpdatedAt?: string
 ): Promise<UpdateTicketStatusResult> {
+  const payload: any = { status };
+  if (resolutionSummary !== undefined) {
+    payload.resolutionSummary = resolutionSummary;
+  }
+  if (expectedUpdatedAt !== undefined) {
+    payload.expectedUpdatedAt = expectedUpdatedAt;
+  }
+
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ status, resolutionSummary }),
+    body: JSON.stringify(payload),
   });
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data?.error || "Failed to update ticket status");
+    const error: any = new Error(data?.error || "Failed to update ticket status");
+    error.status = res.status;
+    error.code = data?.code;
+    error.data = data;
+    throw error;
   }
 
   return data;
