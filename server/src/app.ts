@@ -76,8 +76,8 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ["OPEN", "CANCELLED"],
   OPEN: ["IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
-  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "CANCELLED"],
-  RESOLVED: ["CLOSED", "REOPENED", "CANCELLED"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "RESOLVED"],
+  RESOLVED: ["CLOSED", "REOPENED"],
   REOPENED: ["IN_PROGRESS", "CANCELLED"],
   CANCELLED: [],
   CLOSED: [],
@@ -1155,7 +1155,7 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
-    const { status, resolutionSummary } = req.body || {};
+    const { status, resolutionSummary, expectedUpdatedAt } = req.body || {};
     const requestedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
 
     if (!requestedStatus || !(VALID_TICKET_STATUSES as readonly string[]).includes(requestedStatus)) {
@@ -1171,9 +1171,16 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
+    // Role-based status authorization (BR-12, BR-17)
     if (sessionRole === "REQUESTER") {
       if (ticket.requesterId !== sessionUserId) {
         res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+        return;
+      }
+
+      // Requesters cannot directly set tickets to RESOLVED or CLOSED (BR-17, BR-18)
+      if (requestedStatus === "RESOLVED" || requestedStatus === "CLOSED") {
+        res.status(403).json({ error: "Forbidden: role cannot resolve or close tickets", code: "FORBIDDEN_ROLE" });
         return;
       }
 
@@ -1195,12 +1202,42 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
-    if (requestedStatus === "RESOLVED" && (!resolutionSummary || String(resolutionSummary).trim().length < 5)) {
-      res.status(422).json({
-        error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
-        code: "RESOLUTION_SUMMARY_REQUIRED",
+    // Optimistic Concurrency Check (BR-19)
+    if (expectedUpdatedAt !== undefined) {
+      const clientTimestamp = new Date(expectedUpdatedAt).getTime();
+      const serverTimestamp = ticket.updatedAt.getTime();
+      if (isNaN(clientTimestamp) || Math.abs(clientTimestamp - serverTimestamp) > 1000) {
+        res.status(409).json({
+          error: "Ticket has been modified by another user. Please refresh and try again.",
+          code: "STALE_UPDATE_CONFLICT",
+        });
+        return;
+      }
+    }
+
+    // Resolution Gate Enforcement (BR-15, BR-16, BR-17)
+    if (requestedStatus === "RESOLVED") {
+      // 1. Actions Taken prerequisite (BR-15)
+      const actionCount = await prisma.actionTaken.count({
+        where: { ticketId },
       });
-      return;
+
+      if (actionCount === 0) {
+        res.status(422).json({
+          error: "Cannot resolve ticket without at least one recorded Action Taken.",
+          code: "RESOLUTION_REQUIRES_ACTION_TAKEN",
+        });
+        return;
+      }
+
+      // 2. Resolution summary prerequisite (BR-16)
+      if (!resolutionSummary || typeof resolutionSummary !== "string" || resolutionSummary.trim().length < 5) {
+        res.status(422).json({
+          error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
+          code: "RESOLUTION_SUMMARY_REQUIRED",
+        });
+        return;
+      }
     }
 
     if (requestedStatus === "CLOSED" && ticket.status !== "RESOLVED") {
@@ -1795,16 +1832,16 @@ app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: 
       return;
     }
 
-    const content = "The requester indicates that the problem appears resolved.";
+    const content = "The requester indicates that the problem appears resolved. Awaiting IT staff review and formal resolution.";
     const [updatedTicket, comment] = await prisma.$transaction([
-      prisma.ticket.update({ where: { id: ticketId }, data: { status: "RESOLVED" } }),
+      prisma.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } }),
       prisma.publicComment.create({
         data: { ticketId, authorId: sessionUserId, content },
         include: { author: { select: { id: true, name: true, role: true } } },
       }),
     ]);
 
-    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Problem marked as appearing resolved" });
+    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Resolution indication submitted and staff notified" });
   } catch (_err) {
     res.status(500).json({ error: "Failed to record resolution indication", code: "INTERNAL_SERVER_ERROR" });
   }
