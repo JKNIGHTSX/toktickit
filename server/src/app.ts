@@ -2711,6 +2711,86 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
 
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Lab 4 Issue #7: Requester Dashboard Endpoint
+// ---------------------------------------------------------------------------
+
+// GET /api/dashboard/requester
+app.get("/api/dashboard/requester", async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({ error: "User not found or inactive", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({ error: "Password change required before accessing the application", code: "MUST_CHANGE_PASSWORD" });
+      return;
+    }
+
+    if (currentUser.role !== "REQUESTER") {
+      res.status(403).json({ error: "Forbidden: Requester dashboard is accessible to Requesters only", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    // requesterId derived exclusively from authenticated session (BR-20, BR-27)
+    const requesterId = currentUser.id;
+
+    const [totalOpen, inProgress, resolved, closed, recentTickets] = await Promise.all([
+      prisma.ticket.count({ where: { requesterId, status: { in: ["NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER", "REOPENED"] } } }),
+      prisma.ticket.count({ where: { requesterId, status: "IN_PROGRESS" } }),
+      prisma.ticket.count({ where: { requesterId, status: "RESOLVED" } }),
+      prisma.ticket.count({ where: { requesterId, status: "CLOSED" } }),
+      prisma.ticket.findMany({
+        where: { requesterId },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          ticketNumber: true,
+          summary: true,
+          status: true,
+          requestedPriority: true,
+          updatedAt: true,
+          category: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    res.status(200).json({
+      data: {
+        metrics: {
+          totalOpen: totalOpen || 0,
+          inProgress: inProgress || 0,
+          resolved: resolved || 0,
+          closed: closed || 0,
+        },
+        recentTickets: recentTickets.map((t) => ({
+          id: t.id,
+          ticketNumber: t.ticketNumber,
+          summary: t.summary,
+          status: t.status,
+          requestedPriority: t.requestedPriority,
+          updatedAt: t.updatedAt,
+          category: t.category,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/requester error:", error);
+    res.status(500).json({ error: "Internal server error retrieving requester dashboard data", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
 // Lab 4 Issue #6: IT Staff & Administrator Dashboard Endpoints
 // ---------------------------------------------------------------------------
 
