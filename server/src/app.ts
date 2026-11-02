@@ -2709,7 +2709,241 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// Lab 4 Issue #6: IT Staff & Administrator Dashboard Endpoints
+// ---------------------------------------------------------------------------
+
+const ACTIVE_TICKET_STATUSES = [
+  "NEW",
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_FOR_REQUESTER",
+  "REOPENED",
+] as const;
+
+/**
+ * Helper to fetch operational metrics and recent tickets for IT Staff and Administrator dashboards.
+ */
+async function getStaffDashboardData(prisma: any, currentUserId: number) {
+  // Run status aggregations, myAssignedTickets count, and recent tickets in parallel
+  const [statusGroups, myAssignedCount, recentTickets] = await Promise.all([
+    // Group count by status for NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER
+    prisma.ticket.groupBy({
+      by: ["status"],
+      where: {
+        status: {
+          in: ["NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER"],
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    // Count active tickets assigned to the current user
+    prisma.ticket.count({
+      where: {
+        ownerId: currentUserId,
+        status: {
+          in: ACTIVE_TICKET_STATUSES as any,
+        },
+      },
+    }),
+    // Up to 5 most recently updated active tickets assigned to current user or unassigned
+    prisma.ticket.findMany({
+      where: {
+        status: {
+          in: ACTIVE_TICKET_STATUSES as any,
+        },
+        OR: [
+          { ownerId: currentUserId },
+          { ownerId: null },
+        ],
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 5,
+      select: {
+        id: true,
+        ticketNumber: true,
+        summary: true,
+        status: true,
+        itPriority: true,
+        updatedAt: true,
+        requester: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const statusMap: Record<string, number> = {
+    NEW: 0,
+    OPEN: 0,
+    IN_PROGRESS: 0,
+    WAITING_FOR_REQUESTER: 0,
+  };
+
+  for (const group of statusGroups) {
+    statusMap[group.status] = group._count._all;
+  }
+
+  return {
+    metrics: {
+      newTickets: statusMap["NEW"] || 0,
+      openTickets: statusMap["OPEN"] || 0,
+      inProgressTickets: statusMap["IN_PROGRESS"] || 0,
+      waitingForRequesterTickets: statusMap["WAITING_FOR_REQUESTER"] || 0,
+      myAssignedTickets: myAssignedCount || 0,
+    },
+    recentTickets: recentTickets.map((t: any) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      summary: t.summary,
+      status: t.status,
+      itPriority: t.itPriority,
+      requester: t.requester,
+      owner: t.owner,
+      updatedAt: t.updatedAt,
+    })),
+  };
+}
+
+// GET /api/dashboard/staff
+app.get("/api/dashboard/staff", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({
+        error: "User not found or inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+
+    if (currentUser.role !== "IT_STAFF" && currentUser.role !== "ADMINISTRATOR") {
+      res.status(403).json({
+        error: "Forbidden: Staff dashboard requires IT Staff or Administrator role",
+        code: "FORBIDDEN_ROLE",
+      });
+      return;
+    }
+
+    const dashboardData = await getStaffDashboardData(prisma, currentUser.id);
+
+    res.status(200).json({
+      data: dashboardData,
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/staff error:", error);
+    res.status(500).json({
+      error: "Internal server error retrieving staff dashboard data",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// GET /api/dashboard/admin
+app.get("/api/dashboard/admin", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({
+        error: "User not found or inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+
+    if (currentUser.role !== "ADMINISTRATOR") {
+      res.status(403).json({
+        error: "Forbidden: Administrator dashboard requires Administrator role",
+        code: "FORBIDDEN_ROLE",
+      });
+      return;
+    }
+
+    // Parallel fetch: staff dashboard data + user counts
+    const [staffData, totalUsers, activeUsers] = await Promise.all([
+      getStaffDashboardData(prisma, currentUser.id),
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+    ]);
+
+    const inactiveUsers = totalUsers - activeUsers;
+
+    res.status(200).json({
+      data: {
+        metrics: {
+          ...staffData.metrics,
+          userSummary: {
+            totalUsers,
+            activeUsers,
+            inactiveUsers,
+          },
+        },
+        recentTickets: staffData.recentTickets,
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/admin error:", error);
+    res.status(500).json({
+      error: "Internal server error retrieving administrator dashboard data",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
 export default app;
-
-
-
