@@ -936,3 +936,121 @@ export async function updateActionTaken(
 
   return data;
 }
+
+
+// ---------------------------------------------------------------------------
+// Lab 4 — Dashboards API
+// ---------------------------------------------------------------------------
+
+export interface RequesterDashboardMetrics {
+  totalOpen: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
+}
+
+export interface RequesterRecentTicket {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  status: TicketStatus;
+  requestedPriority: PriorityLevel;
+  updatedAt: string;
+  category?: { name: string };
+}
+
+export interface RequesterDashboardResponse {
+  metrics: RequesterDashboardMetrics;
+  recentTickets: RequesterRecentTicket[];
+}
+
+export interface StaffDashboardMetrics {
+  newTickets: number;
+  openTickets: number;
+  inProgressTickets: number;
+  waitingForRequesterTickets: number;
+  myAssignedTickets: number;
+}
+
+export interface StaffRecentTicket {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  status: TicketStatus;
+  itPriority?: PriorityLevel | null;
+  requester?: { name: string; email: string };
+  owner?: { id: number; name: string } | null;
+  updatedAt: string;
+  category?: { name: string };
+}
+
+export interface StaffDashboardResponse {
+  metrics: StaffDashboardMetrics;
+  recentTickets: StaffRecentTicket[];
+}
+
+export interface AdminUserSummary {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+}
+
+export interface AdminDashboardMetrics extends StaffDashboardMetrics {
+  userSummary: AdminUserSummary;
+}
+
+export interface AdminDashboardResponse {
+  metrics: AdminDashboardMetrics;
+  recentTickets: StaffRecentTicket[];
+}
+
+export async function fetchRequesterDashboard(): Promise<RequesterDashboardResponse> {
+  const res = await fetch(`${API_URL}/api/dashboard/requester`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch requester dashboard");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function fetchStaffDashboard(): Promise<StaffDashboardResponse> {
+  const res = await fetch(`${API_URL}/api/dashboard/staff`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch staff dashboard");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
+
+export async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
+  const res = await fetch(`${API_URL}/api/dashboard/admin`, {
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data?.error || "Failed to fetch administrator dashboard");
+    err.code = data?.code;
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
+  }
+
+  return data.data;
+}
