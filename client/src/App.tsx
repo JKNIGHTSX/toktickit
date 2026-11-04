@@ -8,38 +8,65 @@ import { MyTickets } from "./components/MyTickets.js";
 import { TicketDetail } from "./components/TicketDetail.js";
 import { StaffTicketQueue } from "./components/StaffTicketQueue.js";
 import { UserManagement } from "./components/UserManagement.js";
+import { StaffDashboard } from "./components/StaffDashboard.js";
+import { RequesterDashboard } from "./components/RequesterDashboard.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
+
+type ViewType =
+  | "staff-dashboard"
+  | "create-ticket"
+  | "my-tickets"
+  | "ticket-detail"
+  | "staff-queue"
+  | "user-management"
+  | "requester-dashboard";
+
+function getDefaultView(role?: string): ViewType {
+  switch (role) {
+    case "ADMINISTRATOR":
+      return "staff-dashboard";
+    case "IT_STAFF":
+      return "staff-dashboard";
+    case "REQUESTER":
+    default:
+      return "requester-dashboard";
+  }
+}
 
 function AppContent() {
   const { user, isAuthenticated, isLoading: authLoading, successMessage, logout } = useAuth();
 
   const isStaffOrAdmin = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
+  const isAdmin = user?.role === "ADMINISTRATOR";
 
   const [state, setState] = useState<UiState>("idle");
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [view, setView] = useState<"create-ticket" | "my-tickets" | "ticket-detail" | "staff-queue" | "user-management">(
-    user?.role === "ADMINISTRATOR"
-      ? "user-management"
-      : isStaffOrAdmin
-      ? "staff-queue"
-      : "create-ticket"
+  const [view, setView] = useState<ViewType>(
+    user ? getDefaultView(user.role) : "requester-dashboard"
   );
   const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
 
+  // Whenever the authenticated role changes (login/logout), reset to role-appropriate default
   useEffect(() => {
-    if (user?.role === "ADMINISTRATOR") {
-      if (view !== "user-management") {
-        setView("user-management");
+    if (!user) return;
+    const defaultView = getDefaultView(user.role);
+    // Only redirect if currently on a view the user shouldn't be on
+    const staffViews: ViewType[] = ["staff-dashboard", "staff-queue", "user-management"];
+    const requesterViews: ViewType[] = ["requester-dashboard", "create-ticket", "my-tickets"];
+
+    if (user.role === "ADMINISTRATOR") {
+      if (!staffViews.includes(view) && view !== "ticket-detail") {
+        setView(defaultView);
       }
-    } else if (user?.role === "IT_STAFF") {
-      if (view !== "staff-queue" && view !== "ticket-detail") {
-        setView("staff-queue");
+    } else if (user.role === "IT_STAFF") {
+      if (!staffViews.includes(view) && view !== "ticket-detail") {
+        setView(defaultView);
       }
-    } else if (user?.role === "REQUESTER") {
-      if (view !== "create-ticket" && view !== "my-tickets" && view !== "ticket-detail") {
-        setView("create-ticket");
+    } else if (user.role === "REQUESTER") {
+      if (!requesterViews.includes(view) && view !== "ticket-detail") {
+        setView(defaultView);
       }
     }
   }, [user?.role]);
@@ -145,6 +172,15 @@ function AppContent() {
       </div>
     );
   }
+
+  // Shared active-tab style helper
+  const activeTabStyle = (isActive: boolean) => ({
+    color: isActive ? "#006B3C" : "#556B60",
+    backgroundColor: isActive ? "#EAF6EF" : "transparent",
+    borderColor: isActive ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
+    borderBottom: isActive ? "3px solid #006B3C" : "3px solid transparent",
+    fontWeight: isActive ? 700 : 400,
+  });
 
   return (
     <div style={{ backgroundColor: "#F5F7F6", minHeight: "100vh" }}>
@@ -298,28 +334,58 @@ function AppContent() {
           </div>
         ) : (
           <div>
-            {/* Role-specific Tab Navigation */}
-            {user?.role === "ADMINISTRATOR" ? (
-              /* ── Administrator Navigation ── */
+            {/* ── Administrator Navigation ── */}
+            {isAdmin ? (
               <div>
                 <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "staff-dashboard" ? "active fw-bold" : ""}`}
+                      id="nav-admin-dashboard"
+                      onClick={() => setView("staff-dashboard")}
+                      style={activeTabStyle(view === "staff-dashboard")}
+                    >
+                      📊 Dashboard
+                    </button>
+                  </li>
                   <li className="nav-item">
                     <button
                       className={`nav-link ${view === "user-management" ? "active fw-bold" : ""}`}
                       id="nav-user-management"
                       onClick={() => setView("user-management")}
-                      style={{
-                        color: view === "user-management" ? "#006B3C" : "#556B60",
-                        backgroundColor: view === "user-management" ? "#EAF6EF" : "transparent",
-                        borderColor: view === "user-management" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                      }}
+                      style={activeTabStyle(view === "user-management")}
                     >
                       👥 User Management
                     </button>
                   </li>
                 </ul>
 
-                <UserManagement />
+                {view === "staff-dashboard" && (
+                  <StaffDashboard
+                    onNavigateQueue={(filter) => setView("staff-queue")}
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                    onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
+                {view === "staff-queue" && (
+                  <StaffTicketQueue
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                    onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
+                {view === "ticket-detail" && selectedTicketId !== null && (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => setView("staff-queue")}
+                  />
+                )}
+                {view === "user-management" && <UserManagement />}
               </div>
             ) : isStaffOrAdmin ? (
               /* ── IT Staff Navigation ── */
@@ -327,32 +393,49 @@ function AppContent() {
                 <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
                   <li className="nav-item">
                     <button
-                      className={`nav-link ${view !== "ticket-detail" ? "active fw-bold" : ""}`}
+                      className={`nav-link ${view === "staff-dashboard" ? "active fw-bold" : ""}`}
+                      id="nav-staff-dashboard"
+                      onClick={() => setView("staff-dashboard")}
+                      style={activeTabStyle(view === "staff-dashboard")}
+                    >
+                      📊 Dashboard
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link ${view === "staff-queue" || view === "ticket-detail" ? "active fw-bold" : ""}`}
                       id="nav-ticket-queue"
                       onClick={() => setView("staff-queue")}
-                      style={{
-                        color: view !== "ticket-detail" ? "#006B3C" : "#556B60",
-                        backgroundColor: view !== "ticket-detail" ? "#EAF6EF" : "transparent",
-                        borderColor: view !== "ticket-detail" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                      }}
+                      style={activeTabStyle(view === "staff-queue" || view === "ticket-detail")}
                     >
                       🗂 Ticket Queue
                     </button>
                   </li>
                 </ul>
 
-                {view === "ticket-detail" && selectedTicketId !== null ? (
-                  <TicketDetail
-                    ticketId={selectedTicketId}
-                    onBack={() => setView("staff-queue")}
+                {view === "staff-dashboard" && (
+                  <StaffDashboard
+                    onNavigateQueue={(filter) => setView("staff-queue")}
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                    onCreateTicket={() => setView("create-ticket")}
                   />
-                ) : (
+                )}
+                {view === "staff-queue" && (
                   <StaffTicketQueue
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
                     }}
                     onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
+                {view === "ticket-detail" && selectedTicketId !== null && (
+                  <TicketDetail
+                    ticketId={selectedTicketId}
+                    onBack={() => setView("staff-queue")}
                   />
                 )}
               </div>
@@ -362,13 +445,19 @@ function AppContent() {
                 <ul className="nav nav-tabs mb-4" style={{ borderColor: "#D1D9D4" }}>
                   <li className="nav-item">
                     <button
+                      className={`nav-link ${view === "requester-dashboard" ? "active fw-bold" : ""}`}
+                      id="nav-requester-dashboard"
+                      onClick={() => setView("requester-dashboard")}
+                      style={activeTabStyle(view === "requester-dashboard")}
+                    >
+                      📊 Dashboard
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
                       className={`nav-link ${view === "create-ticket" ? "active fw-bold" : ""}`}
                       onClick={() => setView("create-ticket")}
-                      style={{
-                        color: view === "create-ticket" ? "#006B3C" : "#556B60",
-                        backgroundColor: view === "create-ticket" ? "#EAF6EF" : "transparent",
-                        borderColor: view === "create-ticket" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                      }}
+                      style={activeTabStyle(view === "create-ticket")}
                     >
                       + Create Ticket
                     </button>
@@ -377,17 +466,23 @@ function AppContent() {
                     <button
                       className={`nav-link ${view === "my-tickets" ? "active fw-bold" : ""}`}
                       onClick={() => setView("my-tickets")}
-                      style={{
-                        color: view === "my-tickets" ? "#006B3C" : "#556B60",
-                        backgroundColor: view === "my-tickets" ? "#EAF6EF" : "transparent",
-                        borderColor: view === "my-tickets" ? "#D1D9D4 #D1D9D4 #EAF6EF" : "transparent",
-                      }}
+                      style={activeTabStyle(view === "my-tickets")}
                     >
                       My Tickets
                     </button>
                   </li>
                 </ul>
 
+                {view === "requester-dashboard" && (
+                  <RequesterDashboard
+                    onNavigateTickets={(filter) => setView("my-tickets")}
+                    onSelectTicket={(id) => {
+                      setSelectedTicketId(id);
+                      setView("ticket-detail");
+                    }}
+                    onCreateTicket={() => setView("create-ticket")}
+                  />
+                )}
                 {view === "create-ticket" && (
                   <CreateTicket onCancel={() => setView("my-tickets")} />
                 )}
