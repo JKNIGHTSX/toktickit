@@ -229,11 +229,13 @@ export function RequesterDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateTickets?.({ status: "OPEN" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    Open
+                    <span className="visually-hidden">Status: </span>Open
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -247,7 +249,11 @@ export function RequesterDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateTickets?.({ status: "OPEN" })}
+                  aria-label="Status: Open - View all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateTickets?.({ status: "OPEN" });
+                  }}
                 >
                   View all &rarr;
                 </button>
@@ -262,11 +268,13 @@ export function RequesterDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateTickets?.({ status: "IN_PROGRESS" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    In Progress
+                    <span className="visually-hidden">Status: </span>In Progress
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -280,7 +288,11 @@ export function RequesterDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateTickets?.({ status: "IN_PROGRESS" })}
+                  aria-label="Status: In Progress - View all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateTickets?.({ status: "IN_PROGRESS" });
+                  }}
                 >
                   View all &rarr;
                 </button>
@@ -295,11 +307,13 @@ export function RequesterDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateTickets?.({ status: "RESOLVED" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    Resolved
+                    <span className="visually-hidden">Status: </span>Resolved
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -313,7 +327,11 @@ export function RequesterDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateTickets?.({ status: "RESOLVED" })}
+                  aria-label="Status: Resolved - View all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateTickets?.({ status: "RESOLVED" });
+                  }}
                 >
                   View all &rarr;
                 </button>
@@ -328,11 +346,13 @@ export function RequesterDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateTickets?.({ status: "CLOSED" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    Closed
+                    <span className="visually-hidden">Status: </span>Closed
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -346,7 +366,11 @@ export function RequesterDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateTickets?.({ status: "CLOSED" })}
+                  aria-label="Status: Closed - View all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateTickets?.({ status: "CLOSED" });
+                  }}
                 >
                   View all &rarr;
                 </button>

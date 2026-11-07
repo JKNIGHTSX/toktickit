@@ -314,11 +314,13 @@ export function StaffDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateQueue?.({ status: "NEW" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    New
+                    <span className="visually-hidden">Status: </span>New
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -332,7 +334,11 @@ export function StaffDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateQueue?.({ status: "NEW" })}
+                  aria-label="Status: New - View queue"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateQueue?.({ status: "NEW" });
+                  }}
                 >
                   View queue &rarr;
                 </button>
@@ -347,11 +353,13 @@ export function StaffDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateQueue?.({ status: "OPEN" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    Open
+                    <span className="visually-hidden">Status: </span>Open
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -365,7 +373,11 @@ export function StaffDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateQueue?.({ status: "OPEN" })}
+                  aria-label="Status: Open - View queue"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateQueue?.({ status: "OPEN" });
+                  }}
                 >
                   View queue &rarr;
                 </button>
@@ -380,11 +392,13 @@ export function StaffDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateQueue?.({ status: "IN_PROGRESS" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    In Progress
+                    <span className="visually-hidden">Status: </span>In Progress
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -398,7 +412,11 @@ export function StaffDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateQueue?.({ status: "IN_PROGRESS" })}
+                  aria-label="Status: In Progress - View queue"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateQueue?.({ status: "IN_PROGRESS" });
+                  }}
                 >
                   View queue &rarr;
                 </button>
@@ -413,11 +431,13 @@ export function StaffDashboard({
                   backgroundColor: SURFACE,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateQueue?.({ status: "WAITING_FOR_REQUESTER" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: TEXT_MUTED }}>
-                    Waiting Req
+                    <span className="visually-hidden">Status: </span>Waiting Req
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -431,7 +451,11 @@ export function StaffDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateQueue?.({ status: "WAITING_FOR_REQUESTER" })}
+                  aria-label="Status: Waiting for Requester - View queue"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateQueue?.({ status: "WAITING_FOR_REQUESTER" });
+                  }}
                 >
                   View queue &rarr;
                 </button>
@@ -446,11 +470,13 @@ export function StaffDashboard({
                   backgroundColor: PALE_GREEN,
                   border: `1px solid ${BORDER}`,
                   borderRadius: "8px",
+                  cursor: "pointer",
                 }}
+                onClick={() => onNavigateQueue?.({ assignedTo: "ME" })}
               >
                 <div>
                   <div className="small fw-semibold" style={{ color: GREEN_PRIMARY }}>
-                    My Assigned
+                    My Assigned<span className="visually-hidden"> Tickets</span>
                   </div>
                   <div
                     className="fw-bold my-1"
@@ -464,7 +490,11 @@ export function StaffDashboard({
                   type="button"
                   className="btn btn-link p-0 text-start text-decoration-none small fw-semibold"
                   style={{ color: GREEN_SECONDARY }}
-                  onClick={() => onNavigateQueue?.({ assignedTo: "ME" })}
+                  aria-label="My Assigned Tickets - View queue"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateQueue?.({ assignedTo: "ME" });
+                  }}
                 >
                   View queue &rarr;
                 </button>

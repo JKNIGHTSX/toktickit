@@ -47,6 +47,8 @@ function AppContent() {
     user ? getDefaultView(user.role) : "requester-dashboard"
   );
   const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
+  const [queueFilter, setQueueFilter] = useState<{ status?: string; assignedTo?: string }>({});
+  const [myTicketsFilter, setMyTicketsFilter] = useState<{ status?: string }>({});
 
   // Whenever the authenticated role changes (login/logout), reset to role-appropriate default
   useEffect(() => {
@@ -362,7 +364,10 @@ function AppContent() {
 
                 {view === "staff-dashboard" && (
                   <StaffDashboard
-                    onNavigateQueue={(filter) => setView("staff-queue")}
+                    onNavigateQueue={(filter) => {
+                      setQueueFilter(filter || {});
+                      setView("staff-queue");
+                    }}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
@@ -372,6 +377,8 @@ function AppContent() {
                 )}
                 {view === "staff-queue" && (
                   <StaffTicketQueue
+                    initialFilter={queueFilter}
+                    filter={queueFilter}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
@@ -405,7 +412,10 @@ function AppContent() {
                     <button
                       className={`nav-link ${view === "staff-queue" || view === "ticket-detail" ? "active fw-bold" : ""}`}
                       id="nav-ticket-queue"
-                      onClick={() => setView("staff-queue")}
+                      onClick={() => {
+                        setQueueFilter({});
+                        setView("staff-queue");
+                      }}
                       style={activeTabStyle(view === "staff-queue" || view === "ticket-detail")}
                     >
                       🗂 Ticket Queue
@@ -415,7 +425,10 @@ function AppContent() {
 
                 {view === "staff-dashboard" && (
                   <StaffDashboard
-                    onNavigateQueue={(filter) => setView("staff-queue")}
+                    onNavigateQueue={(filter) => {
+                      setQueueFilter(filter || {});
+                      setView("staff-queue");
+                    }}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
@@ -425,6 +438,8 @@ function AppContent() {
                 )}
                 {view === "staff-queue" && (
                   <StaffTicketQueue
+                    initialFilter={queueFilter}
+                    filter={queueFilter}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
@@ -465,7 +480,10 @@ function AppContent() {
                   <li className="nav-item">
                     <button
                       className={`nav-link ${view === "my-tickets" ? "active fw-bold" : ""}`}
-                      onClick={() => setView("my-tickets")}
+                      onClick={() => {
+                        setMyTicketsFilter({});
+                        setView("my-tickets");
+                      }}
                       style={activeTabStyle(view === "my-tickets")}
                     >
                       My Tickets
@@ -475,7 +493,10 @@ function AppContent() {
 
                 {view === "requester-dashboard" && (
                   <RequesterDashboard
-                    onNavigateTickets={(filter) => setView("my-tickets")}
+                    onNavigateTickets={(filter) => {
+                      setMyTicketsFilter(filter || {});
+                      setView("my-tickets");
+                    }}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
                       setView("ticket-detail");
@@ -488,6 +509,8 @@ function AppContent() {
                 )}
                 {view === "my-tickets" && (
                   <MyTickets
+                    initialFilter={myTicketsFilter}
+                    filter={myTicketsFilter}
                     onCreateTicket={() => setView("create-ticket")}
                     onSelectTicket={(id) => {
                       setSelectedTicketId(id);
