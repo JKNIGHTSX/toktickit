@@ -13,45 +13,25 @@
 
 | PR # | Feature Branch | Target Branch | Scope Summary | Reviewer Verdict | Review Date |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| PR #67 | `feature/lab4-specification` | `lab4-staging` | Lab 4 Sprint Specification, API Contract, UI Spec, and Test Plan | APPROVED | 2026-10-20 |
-| PR #68 | `feature/lab4-db-schema` | `lab4-staging` | Prisma `ActionTaken` model and migration; schema validation; seed data for Actions Taken fixtures | APPROVED | 2026-10-21 |
-| PR #69 | `feature/lab4-actions-taken-api` | `lab4-staging` | Actions Taken API: `POST /api/tickets/:id/actions`, `PATCH /api/actions/:id`, `GET /api/tickets/:id/actions`; role guard; follow-up validation; concurrency gate | APPROVED | 2026-10-22 |
-| PR #70 | `feature/lab4-ticket-workflow-api` | `lab4-staging` | Ticket Workflow & Resolution Gate API: status transitions, `PATCH /api/tickets/:id/status`, resolution gate enforcement, Requester advisory endpoint | APPROVED | 2026-10-24 |
-| PR #71 | `feature/lab4-staff-dashboard-api` | `lab4-staging` | IT Staff & Administrator Dashboard APIs: `GET /api/dashboard/staff`, `GET /api/dashboard/admin`; queue metrics; user summary for Admin role | APPROVED | 2026-10-26 |
-| PR #72 | `feature/lab4-requester-dashboard-api` | `lab4-staging` | Requester Dashboard API: `GET /api/dashboard/requester`; requester-scoped metrics; data isolation | APPROVED | 2026-10-28 |
-| PR #73 | `feature/lab4-rolebase-UI` | `lab4-staging` | Role-based Dashboard UI: `StaffDashboard.tsx`, `RequesterDashboard.tsx`, `ActionsTakenComponent`, navigation filtering fix, drill-down navigation | APPROVED | 2026-10-30 |
+| PR #58 | `feature/lab4-spec-and-tests` | `lab4-staging` | Lab 4 engineering contract and test plan | APPROVED | 2026-10-22 |
+| PR #67 | `feature/lab4-actions-taken-api` | `lab4-staging` | Actions Taken schema and API | APPROVED after regression-test feedback | 2026-10-31 |
+| PR #68 | `feature/lab4-actions-ui` | `lab4-staging` | Actions Taken UI | APPROVED | 2026-11-01 |
+| PR #69 | `feature/lab4-ticket-workflow` | `lab4-staging` | Ticket status workflow and resolution gate | APPROVED after test feedback | 2026-11-01 |
+| PR #70 | `feature/lab4-staff-dashboard-api` | `lab4-staging` | Staff and administrator dashboard API | APPROVED | 2026-11-02 |
+| PR #71 | `feature/lab4-requester-dashboard-api` | `lab4-staging` | Requester dashboard API | APPROVED | 2026-11-03 |
+| PR #72 | `feature/lab4-rolebase-UI` | `lab4-staging` | Role-based dashboard UI and drill-down navigation | APPROVED after dashboard-filter feedback | 2026-11-08 |
 
 ---
 
 ## 3. Recorded GitHub Review Events
 
-### PR #67: Sprint Specification and Contracts
-* **Review**: APPROVED by `Khanatip112` on 2026-10-20.
-* **Comment**: "Specification looks solid JK, great traceability matrix!"
-
-### PR #68: Database Schema & Migration
-* **Review**: APPROVED by `Khanatip112` on 2026-10-21.
-* **Comment**: "Migration and schema look clean. The seed data is comprehensive."
-
-### PR #69: Actions Taken API
-* **Review**: APPROVED by `Khanatip112` on 2026-10-22.
-* **Comment**: "API implementation is thorough. Role guards and validation look correct."
-
-### PR #70: Ticket Workflow & Resolution Gate
-* **Review**: APPROVED by `Khanatip112` on 2026-10-24.
-* **Comment**: "Resolution gate implementation is well done. Good test coverage."
-
-### PR #71: Staff & Administrator Dashboard API
-* **Review**: APPROVED by `Khanatip112` on 2026-10-26.
-* **Comment**: "Staff dashboard API is comprehensive. Admin user summary is a nice touch."
-
-### PR #72: Requester Dashboard API
-* **Review**: APPROVED by `Khanatip112` on 2026-10-28.
-* **Comment**: "Requester data isolation looks correct. Metrics calculation is clean."
-
-### PR #73: Role-based Dashboard UI
-* **Review**: APPROVED by `Khanatip112` on 2026-10-30.
-* **Comment**: "Dashboard UI looks great JK! Navigation filtering is working as expected. Good job!"
+* **PR #58**: Approved by `Khanatip112` on 2026-10-22.
+* **PR #67**: Earlier reviews requested correction of two Lab 1 regression failures; the updated commit was approved on 2026-10-31.
+* **PR #68**: Approved by `Khanatip112` on 2026-11-01.
+* **PR #69**: A review noted failing server tests; the updated commit was approved on 2026-11-01.
+* **PR #70**: Approved by `Khanatip112` on 2026-11-02.
+* **PR #71**: Approved by `Khanatip112` on 2026-11-03.
+* **PR #72**: A review noted that dashboard drill-down filters were not applied; the updated commit was approved on 2026-11-08.
 
 ---
 
@@ -86,23 +66,24 @@
 | AC-17 | IT Staff Dashboard Metrics | `API-18`, `UI-04`, `E2E-03` | ✅ PASS |
 | AC-18 | Dashboard Drill-Down Navigation | `UI-04`, `E2E-03` | ✅ PASS |
 | AC-19 | Administrator Dashboard Counters | `API-20` | ✅ PASS |
-| AC-20 | Full System Regression | `REG-01` | ✅ PASS |
+| AC-20 | Full System Regression | `REG-01` (`npm test`: 468 tests; E2E: 37 tests) | ✅ PASS |
 | AC-21 | Empty State Dashboard Rendering | `UI-03`, `UI-04` | ✅ PASS |
-| AC-22 | Responsive & Accessibility Polish | `E2E-01`, `E2E-02`, `E2E-03` | ✅ PASS |
+| AC-22 | Responsive & Accessibility Polish | `E2E-01`, `E2E-02`, `E2E-03`; manual keyboard and viewport checks | ✅ PASS |
 
 ---
 
 ## 6. Release Pull Request (`lab4-staging` → `main`)
 
-* **Release PR Link**: _(To be created after final Issue #9 regression is complete)_
+* **Release PR Link**: None found on GitHub at the time of this regression review.
+* **Regression branch**: `feature/lab4-final-regression` (based on `lab4-staging`); it contains the existing `5038f91` commit plus uncommitted regression follow-up changes. No release PR was opened.
 * **Release Checklist**:
-  - [x] All 7 feature PRs merged into `lab4-staging`.
-  - [x] All automated unit, API, UI, and E2E tests pass from clean checkout.
-  - [x] Zero database migration conflicts.
-  - [x] Visual inspection confirmed on Desktop (≥992px), Tablet (768–991px), and Mobile (<768px).
-  - [x] Final peer approval signed off.
-  - [x] E2E test suite (`e2e/lab-04/`) covers all 3 E2E test IDs: E2E-01, E2E-02, E2E-03.
+  - [x] The seven Lab 4 PRs (#58, #67–#72) are merged into `lab4-staging`.
+  - [x] Fresh-database migration and seed instructions were executed successfully.
+  - [x] Final automated regression suites pass (server 297, client 171, E2E 37).
+  - [x] Desktop, tablet, and mobile visual/accessibility inspection is complete and evidenced in `artifacts/lab-04/screenshots/`; keyboard focus was manually verified.
+  - [ ] Final peer review and release approval are recorded.
+  - [x] Lab 4 E2E coverage exists for E2E-01, E2E-02, and E2E-03.
 * **Reviewer Sign-off**:
-  * Reviewer Name: Khanatip
-  * Date: 10/11/2026
-
+  * Final release reviewer: Not yet recorded.
+  * Date: Pending final release review.
+* **Accessibility scope note**: Keyboard focus behavior and responsive layouts were manually checked; no automated axe or screen-reader audit was run.

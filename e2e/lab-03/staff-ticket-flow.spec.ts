@@ -23,6 +23,7 @@ test.describe("Lab 3 - E2E IT Staff Ticket Journey", () => {
     });
     expect(createRes.status()).toBe(201);
     const createdTicket = await createRes.json();
+    const ticketId = createdTicket.id;
     const ticketNumber = createdTicket.ticketNumber;
 
     // 2. IT Staff signs in
@@ -30,6 +31,8 @@ test.describe("Lab 3 - E2E IT Staff Ticket Journey", () => {
     await page.getByLabel(/email/i).fill("tech1@toktickit.local");
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
+
+    await page.locator("#nav-ticket-queue").click();
 
     // 3. View Queue and verify navigation
     await expect(page.locator("#nav-ticket-queue")).toBeVisible();
@@ -106,15 +109,35 @@ test.describe("Lab 3 - E2E IT Staff Ticket Journey", () => {
       await page.waitForTimeout(300);
     }
 
+    const staffLoginRes = await request.post("http://localhost:3000/api/auth/login", {
+      data: {
+        email: "tech1@toktickit.local",
+        password: "Password123!",
+      },
+    });
+    expect(staffLoginRes.ok()).toBeTruthy();
+    const actionRes = await request.post(`http://localhost:3000/api/tickets/${ticketId}/actions`, {
+      data: {
+        actionDescription: "Completed hardware diagnostics.",
+        result: "No further fault detected after repair.",
+        isFollowUpRequired: false,
+      },
+    });
+    expect(actionRes.status()).toBe(201);
+    await page.reload();
+    await page.locator("#nav-ticket-queue").click();
+    await searchInput.fill(uniqueSummary);
+    await expect(ticketRow).toBeVisible();
+    await ticketRow.click();
+
     // Resolve ticket requires resolution summary
     const resolutionInput = page.getByLabel("Resolution Summary");
-    if (await resolutionInput.isVisible()) {
-      await resolutionInput.fill("Hardware diagnostic completed and battery module replaced.");
-      const resolveBtn = page.getByRole("button", { name: "Resolve Ticket" });
-      await expect(resolveBtn).toBeEnabled();
-      await resolveBtn.click();
-      await expect(page.getByText(/Ticket status updated to RESOLVED/i)).toBeVisible();
-    }
+    await expect(resolutionInput).toBeVisible();
+    await resolutionInput.fill("Hardware diagnostic completed and battery module replaced.");
+    const resolveBtn = page.getByRole("button", { name: "Resolve Ticket" });
+    await expect(resolveBtn).toBeEnabled();
+    await resolveBtn.click();
+    await expect(page.getByText(/Ticket status updated to RESOLVED/i)).toBeVisible();
 
     // 11. Back to Queue navigation
     const backBtn = page.getByRole("button", { name: /Back to Ticket Queue/i });

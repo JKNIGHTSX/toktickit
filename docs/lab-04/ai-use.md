@@ -2,13 +2,13 @@
 
 ## 1. AI Agent Information
 
-* **LLM / Coding Assistant**: Gemini 2.5 Pro & Claude Sonnet 4.5 (via Google DeepMind Antigravity AI Pair Programmer)
+* **LLM / Coding Assistant**: Gemini 2.5 Pro & Claude Sonnet 4.5 (via Google DeepMind Antigravity AI Pair Programmer) during Lab 4 implementation; Copilot SDK in VS Code for Issue #9 final regression.
 * **Methodology**: Spec-Driven Development (Spec DD) & Test-Driven Design (Test DD)
 * **Role**: Technical Pair Programmer for Requirements Analysis, Architecture Design, Database Schema Design, API Contract Specification, Test Planning, Full-Stack Implementation, and QA Verification.
 
 ---
 
-## 2. Selected Key Prompts (8–10)
+## 2. Selected Key Prompts (11)
 
 | # | Development Phase | Prompt (Summarized) | Purpose / Goal | Student Action & Decision |
 | :--- | :--- | :--- | :--- | :--- |
@@ -22,6 +22,7 @@
 | **8** | Role-Based Navigation Architecture | "Extend the existing `setView()` architecture in `App.tsx` to route IT Staff and Administrator to `StaffDashboard` and Requesters to `RequesterDashboard` as the default landing page after login. Preserve `mustChangePassword` intercept so that force-change users cannot access Dashboard views. Add navigation drill-down from dashboard metric cards to the appropriate ticket queue or filtered views." | Implement role-appropriate Dashboard landing pages without breaking the existing navigation architecture from Lab 3 (FR-09, FR-10, AC-18). | **Adjusted**: The initial implementation set the Dashboard as the unconditional default view on login. I corrected this to conditionally check `user.mustChangePassword` after the `checkAuth` response and route to `ChangePassword` view first, preserving the Lab 3 first-login enforcement. |
 | **9** | Navigation Filtering Bug Fix | "Investigate and fix: clicking 'Status: New' or 'Status: Open' in the Staff Dashboard drill-down navigation shows all tickets instead of the filtered subset. Trace the navigation click handler through App.tsx → StaffTicketQueue props → API query parameters." | Restore correct behavior for navigation-driven ticket filtering, which was broken by the introduction of dashboard drill-down click handlers (regression from Issue #8). | **Accepted**: Root cause was that the dashboard card click handlers called `setView("staff-queue")` without passing a `statusFilter` prop. Fixed by extending the view state to carry a `staffQueueFilter` parameter, then reading it in `StaffTicketQueue` to set the initial filter state and API query. |
 | **10** | Final Regression & E2E Completion | "Create `e2e/lab-04/actions-taken-flow.spec.ts` (E2E-01) covering: (1) IT Staff creates Action Taken via UI form, (2) verifies performer stamping, (3) edits the action, (4) verifies updated data appears in the timeline, (5) Requester sees actions read-only, (6) AC-08 independent performer vs. ticket owner verification at API level, and (7) mobile viewport accessibility." | Complete E2E test coverage for the Actions Taken workflow and satisfy the missing E2E-01 file required by the Lab 4 Definition of Done. | **Accepted**: Implemented as 4 test cases covering the happy path, role restriction, independent performer, and mobile viewport. The test relies on API setup for speed and uses actual UI interactions for the core create/edit flow to maintain authenticity of end-to-end coverage. |
+| **11** | Issue #9 Final Regression | "Run the full Lab 1–4 regression from a clean test database; verify migration/seed setup, authentication and role navigation, dashboard drill-down, Actions Taken, resolution gating, stale-update handling, responsive layouts, and release evidence. Fix only confirmed Lab 4 integration defects." | Verify behavior against executable evidence rather than prior issue status, preserve the production/demo database, and leave the release PR unmerged pending approval. | **Accepted after review**: Added missing additive migration prerequisites, isolated and normalized Playwright test accounts in a `_test` database, corrected regression navigation/setup assumptions, restored the Administrator Ticket Queue tab, and added status-filter drill-down assertions. Recorded only test and review evidence actually observed. Final runs passed: 297 server tests, 171 client tests, 37 E2E tests, and both production builds. |
 
 ---
 
@@ -47,9 +48,14 @@ Several corrections were necessary during development:
 
 5. **Testing Library `getByRole("button")` Conflict**: When a card container div had `role="button"` and an inner `<button>` with the same accessible name, `getByRole("button", { name: /status: new/i })` returned multiple elements. Fixed by removing `role="button"` from the wrapper div, relying on the semantic inner button for role queries.
 
+6. **Fresh Database Migration Chain**: Final regression against a new PostgreSQL database exposed a legacy `Category` table mapping mismatch and a missing attachments table required by a later migration. Added additive migrations to align the legacy schema and create the prerequisite table before later migrations run; fresh migration and seed execution then succeeded.
+
+7. **E2E Isolation and Release Navigation**: The serial E2E suite exposed tests that depended on mutated seeded passwords, stale browser navigation assumptions, and an Administrator navigation gap. Restricted E2E setup to a database ending in `_test`, reset only known seeded test accounts there, kept the first-login scenario separate, and added the missing Administrator Ticket Queue navigation and drill-down assertions.
+
+8. **Actions Taken Dialog Keyboard Access**: Manual inspection found that Escape did not close the dialog and focus was not managed. Added initial field focus, a Tab boundary trap, Escape dismissal, and focus restoration to the opener; the component test and browser check verify these behaviors.
+
 ### 3.3. Key Takeaway
 
 Lab 4 reinforced that **audit integrity** in multi-role systems requires careful separation of *who performed an action* from *who owns the resource*. The Actions Taken `performedById` field being independent from `Ticket.ownerId` is a small schema decision with large correctness implications: it enables any authorized staff member to contribute actions without changing ticket ownership, and it ensures the audit log accurately reflects the person who performed physical or technical work.
 
 The concurrency challenge also highlighted an important lesson: optimistic concurrency control is most effective when the client preserves all entered form data on conflict, allowing the user to reload the latest server state and retry with their changes still visible. This UX detail is as important as the HTTP 409 status code itself.
-

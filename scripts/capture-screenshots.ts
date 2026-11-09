@@ -4,11 +4,11 @@
  * at Desktop (1280x800), Tablet (768x1024), and Mobile (375x812) viewports.
  */
 
-import { chromium } from "@playwright/test";
+import { chromium, expect, type Page } from "@playwright/test";
 import * as path from "path";
 import * as fs from "fs";
+import prepareE2E from "../e2e/global-setup.cjs";
 
-const API_BASE = "http://localhost:3000";
 const APP_BASE = "http://localhost:5173";
 
 const STAFF_EMAIL = "tech1@toktickit.local";
@@ -24,23 +24,17 @@ const VIEWPORTS = [
   { name: "mobile", width: 375, height: 812 },
 ];
 
-async function ensurePasswordChanged(request: any, email: string, password: string): Promise<void> {
-  const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-    data: { email, password },
-  });
-  if (!loginRes.ok()) return;
-  const me = await request.get(`${API_BASE}/api/auth/me`);
-  if (!me.ok()) return;
-  const user = await me.json();
-  if (user?.mustChangePassword) {
-    await request.post(`${API_BASE}/api/auth/change-password`, {
-      data: { currentPassword: password, newPassword: password },
-    });
-  }
-  await request.post(`${API_BASE}/api/auth/logout`);
+async function signIn(page: Page, email: string, password: string): Promise<void> {
+  await page.goto(APP_BASE);
+  await page.getByLabel(/email/i).fill(email);
+  await page.locator("#passwordInput").fill(password);
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByRole("button", { name: /Dashboard/i })).toBeVisible({ timeout: 10_000 });
 }
 
 async function main() {
+  await prepareE2E();
+
   // Create screenshot directories
   for (const folder of ["staff-dashboard", "requester-dashboard", "actions-taken"]) {
     const dir = path.join(ARTIFACTS_BASE, folder);
@@ -54,58 +48,20 @@ async function main() {
   for (const viewport of VIEWPORTS) {
     console.log(`\n📸 Capturing at ${viewport.name} (${viewport.width}x${viewport.height})...`);
 
-    const context = await browser.newContext({
+    const staffContext = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       baseURL: APP_BASE,
     });
-    const apiContext = await context.newPage();
+    const requesterContext = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      baseURL: APP_BASE,
+    });
+    const staffPage = await staffContext.newPage();
+    const requesterPage = await requesterContext.newPage();
 
     // --- STAFF DASHBOARD SCREENSHOT ---
     console.log(`  → Staff Dashboard (${viewport.name})`);
-
-    // Login as staff via API
-    await apiContext.goto(`${API_BASE}/api/health`);
-    const loginResp = await apiContext.evaluate(async ({ email, password, base }: any) => {
-      const r = await fetch(`${base}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      return r.status;
-    }, { email: STAFF_EMAIL, password: STAFF_PASSWORD, base: API_BASE });
-
-    const staffPage = await context.newPage();
-    await staffPage.goto(APP_BASE);
-    await staffPage.waitForLoadState("networkidle");
-
-    // If login form is showing, login via UI
-    const emailInput = staffPage.getByLabel(/email/i);
-    if (await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await emailInput.fill(STAFF_EMAIL);
-      await staffPage.locator("#passwordInput").fill(STAFF_PASSWORD);
-      await staffPage.getByRole("button", { name: /sign in/i }).click();
-      await staffPage.waitForLoadState("networkidle");
-      // Handle mustChangePassword redirect
-      const changeBtn = staffPage.getByRole("button", { name: /Change Password/i });
-      if (await changeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await staffPage.locator("[name=currentPassword],[id*=current],[placeholder*=current i]").fill(STAFF_PASSWORD);
-        await staffPage.locator("[name=newPassword],[id*=new],[placeholder*=new i]").fill(STAFF_PASSWORD);
-        const confirmField = staffPage.locator("[name=confirmPassword],[id*=confirm],[placeholder*=confirm i]");
-        if (await confirmField.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await confirmField.fill(STAFF_PASSWORD);
-        }
-        await changeBtn.click();
-        await staffPage.waitForLoadState("networkidle");
-      }
-    }
-
-    // Click Dashboard tab
-    const dashboardBtn = staffPage.getByRole("button", { name: /Dashboard/i });
-    if (await dashboardBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await dashboardBtn.click();
-      await staffPage.waitForLoadState("networkidle");
-    }
+    await signIn(staffPage, STAFF_EMAIL, STAFF_PASSWORD);
 
     await staffPage.screenshot({
       path: path.join(ARTIFACTS_BASE, "staff-dashboard", `${viewport.name}.png`),
@@ -115,36 +71,7 @@ async function main() {
 
     // --- REQUESTER DASHBOARD SCREENSHOT ---
     console.log(`  → Requester Dashboard (${viewport.name})`);
-    const requesterPage = await context.newPage();
-    await requesterPage.goto(APP_BASE);
-    await requesterPage.waitForLoadState("networkidle");
-
-    const reqEmailInput = requesterPage.getByLabel(/email/i);
-    if (await reqEmailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await reqEmailInput.fill(REQUESTER_EMAIL);
-      await requesterPage.locator("#passwordInput").fill(REQUESTER_PASSWORD);
-      await requesterPage.getByRole("button", { name: /sign in/i }).click();
-      await requesterPage.waitForLoadState("networkidle");
-      // Handle mustChangePassword
-      const changeBtn = requesterPage.getByRole("button", { name: /Change Password/i });
-      if (await changeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await requesterPage.locator("[name=currentPassword],[id*=current],[placeholder*=current i]").fill(REQUESTER_PASSWORD);
-        await requesterPage.locator("[name=newPassword],[id*=new],[placeholder*=new i]").fill(REQUESTER_PASSWORD);
-        const confirmField = requesterPage.locator("[name=confirmPassword],[id*=confirm],[placeholder*=confirm i]");
-        if (await confirmField.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await confirmField.fill(REQUESTER_PASSWORD);
-        }
-        await changeBtn.click();
-        await requesterPage.waitForLoadState("networkidle");
-      }
-    }
-
-    // Dashboard should auto-load for requester
-    const reqDashBtn = requesterPage.getByRole("button", { name: /Dashboard/i });
-    if (await reqDashBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await reqDashBtn.click();
-      await requesterPage.waitForLoadState("networkidle");
-    }
+    await signIn(requesterPage, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
     await requesterPage.screenshot({
       path: path.join(ARTIFACTS_BASE, "requester-dashboard", `${viewport.name}.png`),
@@ -154,22 +81,20 @@ async function main() {
 
     // --- ACTIONS TAKEN SCREENSHOT ---
     console.log(`  → Actions Taken (${viewport.name})`);
-    // Reuse staffPage to navigate to a ticket with actions
-    await staffPage.getByRole("button", { name: /Ticket Queue/i }).click();
+    await staffPage.setViewportSize({ width: 1280, height: 800 });
+    await staffPage.locator("#nav-ticket-queue").click();
     await staffPage.waitForLoadState("networkidle");
 
-    // Click first available ticket
-    const firstRow = staffPage.locator("tr td a, tr[data-ticket-id], tbody tr").first();
-    if (await firstRow.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await firstRow.click();
-      await staffPage.waitForLoadState("networkidle");
-      // Scroll to Actions Taken section
-      const actionsHeading = staffPage.getByRole("heading", { name: /Actions Taken/i });
-      if (await actionsHeading.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await actionsHeading.scrollIntoViewIfNeeded();
-        await staffPage.waitForTimeout(500);
-      }
-    }
+    const searchInput = staffPage.getByLabel("Search by ticket number or summary");
+    await searchInput.fill("TKT-2026-000101");
+    const actionTicket = staffPage.locator("tbody tr").filter({ hasText: "TKT-2026-000101" }).first();
+    await expect(actionTicket).toBeVisible();
+    await actionTicket.click();
+    const actionsHeading = staffPage.getByRole("heading", { name: /Actions Taken/i });
+    await expect(actionsHeading).toBeVisible();
+    await expect(staffPage.getByText(/Ran battery health diagnostics remotely/).first()).toBeVisible();
+    await staffPage.setViewportSize({ width: viewport.width, height: viewport.height });
+    await actionsHeading.scrollIntoViewIfNeeded();
 
     await staffPage.screenshot({
       path: path.join(ARTIFACTS_BASE, "actions-taken", `${viewport.name}.png`),
@@ -179,7 +104,8 @@ async function main() {
 
     await staffPage.close();
     await requesterPage.close();
-    await context.close();
+    await staffContext.close();
+    await requesterContext.close();
   }
 
   await browser.close();
@@ -191,4 +117,3 @@ main().catch((err) => {
   console.error("Screenshot capture failed:", err);
   process.exit(1);
 });
-

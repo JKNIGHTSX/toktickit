@@ -29,41 +29,41 @@ The testing strategy for TokTickIT Lab 4 enforces **Test-Driven Design (Test DD)
 
 ---
 
-## 2. Planned Tests Table
+## 2. Executed Tests Table
 
 | Test ID | Type | Requirement / AC | What It Tests / Scenario | Expected Result | Automated Test File | Final Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **UT-01** | Unit | BR-05 | Follow-up note validator | Validates follow-up note is required if `isFollowUpRequired = true` | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **UT-02** | Unit | BR-12 | Ticket status transition rule matrix | Verifies all 8 statuses and permitted/prohibited state transitions | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **UT-03** | Unit | BR-15, BR-16 | Resolution gate prerequisite rules | Validates `>= 1` Action Taken and non-empty `resolutionSummary` | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-01** | API | FR-01, AC-01 | `POST /api/tickets/:id/actions` (Valid data) | `201 Created`, creates record with `performedById = currentUser.id` | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-02** | API | BR-05, AC-02 | `POST /api/tickets/:id/actions` (Missing follow-up note) | `400 Bad Request` with `FOLLOW_UP_NOTE_REQUIRED` error code | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-03** | API | FR-01, AC-03 | `POST /api/tickets/:id/actions` with attachment notes | `201 Created`, persists attachment notes string | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-04** | API | FR-02, AC-04 | `PATCH /api/actions/:id` (Valid update) | `200 OK`, updates description/result in PostgreSQL | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-05** | API | FR-02, AC-05 | `PATCH /api/actions/:id` (Update follow-up missing note)| `400 Bad Request` | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-06** | API | FR-03, AC-06 | `GET /api/tickets/:id/actions` (Requester owned ticket) | `200 OK`, returns all actions taken for that ticket | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-07** | API | FR-03, AC-07 | `POST /api/tickets/:id/actions` (Requester attempt) | `403 Forbidden` | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-08** | API | FR-04, AC-08 | Action performer differs from Ticket Owner | `201 Created`, `performedById` is actor, ticket `ownerId` untouched | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-09** | API | FR-05, AC-09 | `PATCH /api/tickets/:id/status` (Permitted: OPEN -> IN_PROGRESS)| `200 OK`, updates status | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-10** | API | FR-05, AC-10 | `PATCH /api/tickets/:id/status` (Invalid: NEW -> CLOSED) | `422 Unprocessable Entity` with `INVALID_STATUS_TRANSITION` | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-11** | API | FR-06, AC-11 | Transition to `RESOLVED` with 0 Actions Taken | `422 Unprocessable Entity` (`RESOLUTION_REQUIRES_ACTION_TAKEN`) | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-12** | API | FR-06, AC-12 | Transition to `RESOLVED` with 1 Action but missing summary| `422 Unprocessable Entity` (`RESOLUTION_SUMMARY_REQUIRED`) | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-13** | API | FR-06, AC-11 | Transition to `RESOLVED` with 1 Action and valid summary | `200 OK`, updates status to `RESOLVED` | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-14** | API | FR-07, AC-13 | Requester advisory "Problem Appears Resolved" | `200 OK`, posts public comment, does not directly set `RESOLVED` | `server/tests/lab-04/ticket-workflow.api.test.ts` | Planned |
-| **API-15** | API | FR-08, AC-14 | `PATCH /api/actions/:id` with stale `expectedUpdatedAt` | `409 Conflict` with `STALE_UPDATE_CONFLICT` | `server/tests/lab-04/actions-taken.api.test.ts` | Planned |
-| **API-16** | API | FR-09, AC-15 | `GET /api/dashboard/requester` (Metrics & Recent) | `200 OK`, returns accurate user-scoped counts and recent tickets | `server/tests/lab-04/requester-dashboard.api.test.ts` | Planned |
-| **API-17** | API | FR-09, AC-16 | `GET /api/dashboard/requester` (Data Isolation) | Never leaks tickets owned by other requesters | `server/tests/lab-04/requester-dashboard.api.test.ts` | Planned |
-| **API-18** | API | FR-10, AC-17 | `GET /api/dashboard/staff` (Staff Queue Metrics) | `200 OK`, returns accurate operational counts and recent list | `server/tests/lab-04/staff-dashboard.api.test.ts` | Planned |
-| **API-19** | API | FR-10, AC-17 | `GET /api/dashboard/staff` (Requester access attempt) | `403 Forbidden` | `server/tests/lab-04/staff-dashboard.api.test.ts` | Planned |
-| **API-20** | API | FR-11, AC-19 | `GET /api/dashboard/admin` (Staff Metrics + User counts) | `200 OK`, includes `userSummary` object with active/inactive counts | `server/tests/lab-04/staff-dashboard.api.test.ts` | Planned |
-| **UI-01** | UI | AC-01, AC-02 | `ActionsTaken` component (list, badges, conditional inputs) | Renders action rows, follow-up flags, and form validation | `client/tests/lab-04/ActionsTaken.test.tsx` | Planned |
-| **UI-02** | UI | AC-09, AC-11 | `TicketWorkflow` component (transition controls & gate feedback) | Blocks resolve button when 0 actions, renders summary prompt | `client/tests/lab-04/TicketWorkflow.test.tsx` | Planned |
-| **UI-03** | UI | AC-15, AC-21 | `RequesterDashboard` component | Renders metric cards, recent tickets list, empty states | `client/tests/lab-04/RequesterDashboard.test.tsx` | Planned |
-| **UI-04** | UI | AC-17, AC-18 | `StaffDashboard` component | Renders 5 queue cards, drill-down navigation, quick actions | `client/tests/lab-04/StaffDashboard.test.tsx` | Planned |
-| **E2E-01** | E2E | AC-01, AC-08 | Actions Taken End-to-End Workflow | Full journey: Login Staff -> View ticket -> Record action -> Edit action -> Verify timeline | `e2e/lab-04/actions-taken-flow.spec.ts` | Planned |
-| **E2E-02** | E2E | AC-11, AC-13 | Ticket Resolution Gate End-to-End Journey | Full journey: Attempt resolve (blocked) -> Record action -> Resolve -> Close | `e2e/lab-04/ticket-resolution.spec.ts` | Planned |
-| **E2E-03** | E2E | AC-15, AC-18 | Role Dashboards & Drill-down Journey | Full journey: Requester views metrics -> Drill-down -> Staff views queue metrics -> Drill-down | `e2e/lab-04/dashboards.spec.ts` | Planned |
-| **REG-01** | Regr | AC-20 | Lab 1–3 Full Test Suite Regression | Complete suite of all existing Lab 1, 2, and 3 tests passing 100% | Existing test files | Planned |
+| **UT-01** | Unit | BR-05 | Follow-up note validator | Validates follow-up note is required if `isFollowUpRequired = true` | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **UT-02** | Unit | BR-12 | Ticket status transition rule matrix | Verifies all 8 statuses and permitted/prohibited state transitions | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **UT-03** | Unit | BR-15, BR-16 | Resolution gate prerequisite rules | Validates `>= 1` Action Taken and non-empty `resolutionSummary` | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-01** | API | FR-01, AC-01 | `POST /api/tickets/:id/actions` (Valid data) | `201 Created`, creates record with `performedById = currentUser.id` | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-02** | API | BR-05, AC-02 | `POST /api/tickets/:id/actions` (Missing follow-up note) | `400 Bad Request` with `FOLLOW_UP_NOTE_REQUIRED` error code | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-03** | API | FR-01, AC-03 | `POST /api/tickets/:id/actions` with attachment notes | `201 Created`, persists attachment notes string | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-04** | API | FR-02, AC-04 | `PATCH /api/actions/:id` (Valid update) | `200 OK`, updates description/result in PostgreSQL | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-05** | API | FR-02, AC-05 | `PATCH /api/actions/:id` (Update follow-up missing note)| `400 Bad Request` | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-06** | API | FR-03, AC-06 | `GET /api/tickets/:id/actions` (Requester owned ticket) | `200 OK`, returns all actions taken for that ticket | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-07** | API | FR-03, AC-07 | `POST /api/tickets/:id/actions` (Requester attempt) | `403 Forbidden` | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-08** | API | FR-04, AC-08 | Action performer differs from Ticket Owner | `201 Created`, `performedById` is actor, ticket `ownerId` untouched | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-09** | API | FR-05, AC-09 | `PATCH /api/tickets/:id/status` (Permitted: OPEN -> IN_PROGRESS)| `200 OK`, updates status | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-10** | API | FR-05, AC-10 | `PATCH /api/tickets/:id/status` (Invalid: NEW -> CLOSED) | `422 Unprocessable Entity` with `INVALID_STATUS_TRANSITION` | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-11** | API | FR-06, AC-11 | Transition to `RESOLVED` with 0 Actions Taken | `422 Unprocessable Entity` (`RESOLUTION_REQUIRES_ACTION_TAKEN`) | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-12** | API | FR-06, AC-12 | Transition to `RESOLVED` with 1 Action but missing summary| `422 Unprocessable Entity` (`RESOLUTION_SUMMARY_REQUIRED`) | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-13** | API | FR-06, AC-11 | Transition to `RESOLVED` with 1 Action and valid summary | `200 OK`, updates status to `RESOLVED` | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-14** | API | FR-07, AC-13 | Requester advisory "Problem Appears Resolved" | `200 OK`, posts public comment, does not directly set `RESOLVED` | `server/tests/lab-04/ticket-workflow.api.test.ts` | ✅ PASS |
+| **API-15** | API | FR-08, AC-14 | `PATCH /api/actions/:id` with stale `expectedUpdatedAt` | `409 Conflict` with `STALE_UPDATE_CONFLICT` | `server/tests/lab-04/actions-taken.api.test.ts` | ✅ PASS |
+| **API-16** | API | FR-09, AC-15 | `GET /api/dashboard/requester` (Metrics & Recent) | `200 OK`, returns accurate user-scoped counts and recent tickets | `server/tests/lab-04/requester-dashboard.api.test.ts` | ✅ PASS |
+| **API-17** | API | FR-09, AC-16 | `GET /api/dashboard/requester` (Data Isolation) | Never leaks tickets owned by other requesters | `server/tests/lab-04/requester-dashboard.api.test.ts` | ✅ PASS |
+| **API-18** | API | FR-10, AC-17 | `GET /api/dashboard/staff` (Staff Queue Metrics) | `200 OK`, returns accurate operational counts and recent list | `server/tests/lab-04/staff-dashboard.api.test.ts` | ✅ PASS |
+| **API-19** | API | FR-10, AC-17 | `GET /api/dashboard/staff` (Requester access attempt) | `403 Forbidden` | `server/tests/lab-04/staff-dashboard.api.test.ts` | ✅ PASS |
+| **API-20** | API | FR-11, AC-19 | `GET /api/dashboard/admin` (Staff Metrics + User counts) | `200 OK`, includes `userSummary` object with active/inactive counts | `server/tests/lab-04/staff-dashboard.api.test.ts` | ✅ PASS |
+| **UI-01** | UI | AC-01, AC-02 | `ActionsTaken` component (list, badges, conditional inputs) | Renders action rows, follow-up flags, and form validation | `client/tests/lab-04/ActionsTaken.test.tsx` | ✅ PASS |
+| **UI-02** | UI | AC-09, AC-11 | `TicketWorkflow` component (transition controls & gate feedback) | Blocks resolve button when 0 actions, renders summary prompt | `client/tests/lab-04/TicketWorkflow.test.tsx` | ✅ PASS |
+| **UI-03** | UI | AC-15, AC-21 | `RequesterDashboard` component | Renders metric cards, recent tickets list, empty states | `client/tests/lab-04/RequesterDashboard.test.tsx` | ✅ PASS |
+| **UI-04** | UI | AC-17, AC-18 | `StaffDashboard` component | Renders 5 queue cards, drill-down navigation, quick actions | `client/tests/lab-04/StaffDashboard.test.tsx` | ✅ PASS |
+| **E2E-01** | E2E | AC-01, AC-08 | Actions Taken End-to-End Workflow | Full journey: Login Staff -> View ticket -> Record action -> Edit action -> Verify timeline | `e2e/lab-04/actions-taken-flow.spec.ts` | ✅ PASS |
+| **E2E-02** | E2E | AC-11, AC-13 | Ticket Resolution Gate End-to-End Journey | Full journey: Attempt resolve (blocked) -> Record action -> Resolve -> Close | `e2e/lab-04/ticket-resolution.spec.ts` | ✅ PASS |
+| **E2E-03** | E2E | AC-15, AC-18 | Role Dashboards & Drill-down Journey | Full journey: Requester views metrics -> Drill-down -> Staff views queue metrics -> Drill-down | `e2e/lab-04/dashboards.spec.ts` | ✅ PASS |
+| **REG-01** | Regr | AC-20 | Lab 1–4 Full Test Suite Regression | Complete server and client suites covering Labs 1–4 | Existing test files | ✅ PASS |
 
 ---
 
@@ -93,3 +93,15 @@ The testing strategy for TokTickIT Lab 4 enforces **Test-Driven Design (Test DD)
 | **AC-20** (Full System Regression) | FR-12 | BR-27 | `REG-01` |
 | **AC-21** (Empty State Dashboard Rendering) | FR-09, FR-10 | BR-25 | `UI-03`, `UI-04` |
 | **AC-22** (Responsive & Accessibility Polish)| FR-12 | BR-28 | `E2E-01`, `E2E-02`, `E2E-03` |
+
+## 4. Final Execution Results
+
+- `npm test` — **PASS**: server, 22 files / 297 tests; client, 20 files / 171 tests.
+- `npm run test:e2e` — **PASS**: 37 Playwright tests across Labs 2–4, using the guarded `toktickit_test` database.
+- `npm --prefix server run build` and `npm --prefix client run build` — **PASS**.
+- Fresh migration and seed workflow — **PASS** on the isolated test database.
+- `npx tsx scripts/capture-screenshots.ts` — **PASS**: nine screenshots captured across desktop (1280×800), tablet (768×1024), and mobile (375×812).
+- Manual keyboard check — **PASS**: the Actions Taken dialog receives initial focus, traps Tab at its boundary, closes with Escape, and returns focus to its opener.
+- Manual visual check — **PASS**: dashboard cards and Actions Taken rows/forms fit at the captured viewport widths without horizontal overflow or visible clipping.
+- Browser runtime check — **PASS**: no console errors or page exceptions during the staff dashboard check; measured no horizontal overflow at 1280, 768, or 375 px.
+- The frontend test run reports existing React `act(...)` warnings; they do not fail tests. No automated axe or screen-reader audit was run.

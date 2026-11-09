@@ -13,6 +13,7 @@ vi.mock("../../src/api", () => ({
   fetchInternalNotes: vi.fn(),
   createInternalNote: vi.fn(),
   markTicketProblemResolved: vi.fn(),
+  fetchTicketActions: vi.fn(),
 }));
 
 // Mock useRequester hook
@@ -65,6 +66,7 @@ describe("TicketDetail UI Component (Lab 2 — Issue #6)", () => {
     vi.clearAllMocks();
     (api.fetchTicketComments as any).mockResolvedValue([]);
     (api.fetchInternalNotes as any).mockResolvedValue([]);
+    (api.fetchTicketActions as any).mockResolvedValue([]);
     setupRequesterMock();
   });
 

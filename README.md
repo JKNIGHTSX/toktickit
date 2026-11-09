@@ -57,8 +57,9 @@ Ensure the following tools are installed on your machine before running the proj
 ### 1. Clone & Branch Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/JKNIGHTSX/toktickit.git
 cd toktickit
+npm install
 ```
 
 ### 2. Configure Environment Variables
@@ -99,20 +100,30 @@ docker compose up -d
 
 ---
 
-### 4. Database Setup & Seeding
-
-Install backend dependencies, execute Prisma migrations, and populate seed data (requesters, categories, related systems):
+### 4. Install Application Dependencies
 
 ```bash
 cd server
 npm install
-npm run prisma:migrate
-npm run prisma:seed
+cd ../client
+npm install
+cd ..
 ```
 
----
+### 5. Database Migration & Seeding
 
-### 5. Start the Application Locally
+Start PostgreSQL before applying migrations. The development database is configured in `server/.env`.
+
+```bash
+cd server
+npm run prisma:migrate
+npm run prisma:seed
+cd ..
+```
+
+`prisma:migrate` applies the checked-in migration history in development. For a deployed environment, run `npx prisma migrate deploy` from `server/`. Seed data is intended for local/demo environments.
+
+### 6. Start the Application Locally
 
 #### Backend API Server:
 ```bash
@@ -124,7 +135,6 @@ npm run dev
 #### Frontend Client:
 ```bash
 cd client
-npm install
 npm run dev
 ```
 > The Vite development server will start on [http://localhost:5173](http://localhost:5173).
@@ -163,23 +173,42 @@ See [Lab 4 API specification](docs/lab-04/api-spec.md) and [Lab 3 API specificat
 
 ## 🧪 Running Automated Tests
 
+From the project root, `npm test` runs the backend and frontend suites:
+
+```bash
+npm test
+```
+
 ### Backend Tests (Vitest & Supertest)
 ```bash
-cd server
-npm test
+npm run test:server
 ```
 
 ### Frontend Tests (Vitest & React Testing Library)
 ```bash
-cd client
-npm test
+npm run test:client
 ```
 
 ### End-to-End Tests (Playwright)
+
+Playwright uses a dedicated PostgreSQL database and its global setup changes seeded test-account credentials. Do not point it at the development or production database. Create the test database once:
+
 ```bash
-# In project root
-npx playwright test
+docker exec toktickit-postgres psql -U toktickit -d postgres -c "CREATE DATABASE toktickit_test;"
 ```
+
+Then apply migrations, seed it, and run Playwright from the project root. PowerShell:
+
+```powershell
+$env:DATABASE_URL = "postgresql://toktickit:toktickit@localhost:5432/toktickit_test?schema=public"
+npm --prefix server run prisma:migrate
+npm --prefix server run prisma:seed
+npx playwright install chromium
+npm run test:e2e
+Remove-Item Env:DATABASE_URL
+```
+
+For Bash, export the same `DATABASE_URL` before running those commands and use `unset DATABASE_URL` afterward. The E2E setup rejects database names that do not end in `_test`.
 
 ---
 
@@ -215,7 +244,6 @@ toktickit/
 │   ├── lab-02/                 # Lab 2 responsive screenshots
 │   ├── lab-03/                 # Lab 3 responsive screenshots
 │   └── lab-04/screenshots/     # Lab 4: staff-dashboard/, requester-dashboard/, actions-taken/
-├── e2e/                        # Playwright End-to-End test suites
 ├── docker-compose.yml          # Docker Compose for PostgreSQL
 ├── playwright.config.ts        # Playwright test configuration
 ├── .gitignore                  # Ignore rules for build, environment, scratch & upload artifacts
@@ -229,7 +257,7 @@ toktickit/
 1. Feature development is performed on dedicated feature branches (`feature/*`).
 2. Lab 4 feature Pull Requests target `lab4-staging`.
 3. Code review and peer sign-offs are documented in [docs/lab-04/reviewer.md](docs/lab-04/reviewer.md).
-4. Merge the staging release into `main` after final verification.
+4. Open a release pull request from `lab4-staging` to `main`; merge only after review and explicit release approval.
 
 ---
 

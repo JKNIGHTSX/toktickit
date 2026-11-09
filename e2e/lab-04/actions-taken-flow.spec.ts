@@ -105,13 +105,13 @@ test.describe("Lab 4 — E2E-01: Actions Taken End-to-End Workflow", () => {
     const openBtn = page.getByRole("button", { name: "Open Ticket" });
     if (await openBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await openBtn.click();
-      await expect(page.getByRole("status")).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /Ticket status updated to/i })).toBeVisible();
     }
     // Begin Work to reach IN_PROGRESS
     const beginWorkBtn = page.getByRole("button", { name: "Begin Work" });
     if (await beginWorkBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await beginWorkBtn.click();
-      await expect(page.getByRole("status")).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /Ticket status updated to/i })).toBeVisible();
     }
 
     // ---- STEP 6: Click "Record Action Taken" to open the modal ----
@@ -435,4 +435,3 @@ test.describe("Lab 4 — E2E-01: Actions Taken End-to-End Workflow", () => {
     await expect(page.getByRole("button", { name: /Record Action Taken/i })).toBeVisible();
   });
 });
-

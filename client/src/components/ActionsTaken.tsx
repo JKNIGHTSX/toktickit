@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ActionTaken,
   CreateActionTakenInput,
@@ -12,6 +12,7 @@ import { useAuth } from "../context/AuthContext.js";
 interface ActionsTakenProps {
   ticketId: string | number;
   ticketStatus?: string;
+  onActionsCountChange?: (count: number) => void;
 }
 
 interface FormState {
@@ -32,7 +33,11 @@ const INITIAL_FORM_STATE: FormState = {
   attachmentNotes: "",
 };
 
-export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenProps) {
+export function ActionsTakenComponent({
+  ticketId,
+  ticketStatus,
+  onActionsCountChange,
+}: ActionsTakenProps) {
   const { user } = useAuth();
   const canManageActions = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
   const isTicketClosed = ticketStatus === "CLOSED";
@@ -50,6 +55,8 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
   const [isConflict, setIsConflict] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const modalTriggerRef = useRef<HTMLElement | null>(null);
 
   const getLocalDateTimeString = (date?: Date) => {
     const d = date ? new Date(date) : new Date();
@@ -68,6 +75,7 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
     try {
       const data = await fetchTicketActions(ticketId);
       setActions(data);
+      onActionsCountChange?.(data.length);
     } catch (err: any) {
       setFetchError(err?.message || "Failed to load actions taken.");
     } finally {
@@ -79,7 +87,22 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
     loadActions();
   }, [ticketId]);
 
+  useEffect(() => {
+    if (isModalOpen) {
+      modalRef.current?.querySelector<HTMLElement>("#action-datetime-input")?.focus();
+    } else {
+      modalTriggerRef.current?.focus();
+    }
+  }, [isModalOpen]);
+
+  const rememberModalTrigger = () => {
+    modalTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  };
+
   const openCreateModal = () => {
+    rememberModalTrigger();
     setEditingAction(null);
     setFormData({
       ...INITIAL_FORM_STATE,
@@ -92,6 +115,7 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
   };
 
   const openEditModal = (action: ActionTaken) => {
+    rememberModalTrigger();
     setEditingAction(action);
     setFormData({
       actionDateTime: action.actionDateTime
@@ -115,6 +139,34 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
     setEditingAction(null);
     setSubmitError(null);
     setIsConflict(false);
+  };
+
+  const handleModalKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModal();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusable?.length) {
+      event.preventDefault();
+      modalRef.current?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   };
 
   const validateForm = (): boolean => {
@@ -207,6 +259,7 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
 
         const res = await createActionTaken(ticketId, payload);
         setActions((prev) => [res.data, ...prev]);
+        onActionsCountChange?.(actions.length + 1);
         setSuccessMessage("Action taken recorded successfully.");
         setIsModalOpen(false);
       }
@@ -470,11 +523,13 @@ export function ActionsTakenComponent({ ticketId, ticketStatus }: ActionsTakenPr
       {isModalOpen && (
         <div
           className="modal show d-block"
+          ref={modalRef}
           tabIndex={-1}
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="action-modal-title"
+          onKeyDown={handleModalKeyDown}
         >
           <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content" style={{ borderRadius: "8px" }}>

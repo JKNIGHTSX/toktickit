@@ -44,6 +44,7 @@ test.describe("Lab 4 - Ticket Resolution Gate E2E Journey", () => {
     await page.getByLabel(/email/i).fill("tech1@toktickit.local");
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
+    await page.locator("#nav-ticket-queue").click();
 
     // 3. Navigate to Ticket Queue and locate ticket
     await expect(page.locator("#nav-ticket-queue")).toBeVisible();
@@ -61,14 +62,14 @@ test.describe("Lab 4 - Ticket Resolution Gate E2E Journey", () => {
     const openBtn = page.getByRole("button", { name: "Open Ticket" });
     if (await openBtn.isVisible()) {
       await openBtn.click();
-      await expect(page.getByRole("status")).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /Ticket status updated to/i })).toBeVisible();
     }
 
     // 6. Begin Work (OPEN -> IN_PROGRESS)
     const beginWorkBtn = page.getByRole("button", { name: "Begin Work" });
     if (await beginWorkBtn.isVisible()) {
       await beginWorkBtn.click();
-      await expect(page.getByRole("status")).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /Ticket status updated to/i })).toBeVisible();
     }
 
     // 7. Verify Resolution Gate: Attempting to resolve without Actions Taken is blocked
@@ -109,6 +110,10 @@ test.describe("Lab 4 - Ticket Resolution Gate E2E Journey", () => {
 
     // Reload or re-check the ticket detail
     await page.reload();
+    await page.locator("#nav-ticket-queue").click();
+    await searchInput.fill(uniqueSummary);
+    await expect(ticketRow).toBeVisible();
+    await ticketRow.click();
     await expect(page.getByText(ticketNumber)).toBeVisible();
 
     // 9. Enter resolution summary (< 5 chars should keep resolve disabled)
@@ -133,8 +138,15 @@ test.describe("Lab 4 - Ticket Resolution Gate E2E Journey", () => {
 
     // 11. Verify Advisory Requester Feedback:
     // Create another ticket for Requester advisory test
+    const advisoryRequesterLogin = await request.post("http://localhost:3000/api/auth/login", {
+      data: {
+        email: "jennifer.anderson@toktickit.local",
+        password: "Password123!",
+      },
+    });
+    expect(advisoryRequesterLogin.ok()).toBeTruthy();
+
     const reqTicketRes = await request.post("http://localhost:3000/api/tickets", {
-      headers: { Cookie: reqLoginRes.headers()["set-cookie"] || "" },
       data: {
         categoryId: 1,
         relatedSystemId: 1,
@@ -146,26 +158,40 @@ test.describe("Lab 4 - Ticket Resolution Gate E2E Journey", () => {
     const reqTicket = await reqTicketRes.json();
 
     // Transition to IN_PROGRESS by staff
-    await request.patch(`http://localhost:3000/api/tickets/${reqTicket.id}/status`, {
+    const advisoryStaffLogin = await request.post("http://localhost:3000/api/auth/login", {
+      data: {
+        email: "tech1@toktickit.local",
+        password: "Password123!",
+      },
+    });
+    expect(advisoryStaffLogin.ok()).toBeTruthy();
+    const openAdvisoryTicket = await request.patch(`http://localhost:3000/api/tickets/${reqTicket.id}/status`, {
       data: { status: "OPEN" },
     });
-    await request.patch(`http://localhost:3000/api/tickets/${reqTicket.id}/status`, {
+    expect(openAdvisoryTicket.status()).toBe(200);
+    const progressAdvisoryTicket = await request.patch(`http://localhost:3000/api/tickets/${reqTicket.id}/status`, {
       data: { status: "IN_PROGRESS" },
     });
+    expect(progressAdvisoryTicket.status()).toBe(200);
+
+    const requesterAdvisoryLogin = await request.post("http://localhost:3000/api/auth/login", {
+      data: {
+        email: "jennifer.anderson@toktickit.local",
+        password: "Password123!",
+      },
+    });
+    expect(requesterAdvisoryLogin.ok()).toBeTruthy();
 
     // Requester clicks "Problem Appears Resolved"
-    const advisoryRes = await request.post(`http://localhost:3000/api/tickets/${reqTicket.id}/problem-appears-resolved`, {
-      headers: { Cookie: reqLoginRes.headers()["set-cookie"] || "" },
-    });
+    const advisoryRes = await request.post(
+      `http://localhost:3000/api/tickets/${reqTicket.id}/problem-appears-resolved`
+    );
     expect(advisoryRes.status()).toBe(200);
 
     // Check that ticket status did NOT directly become RESOLVED
-    const checkReqTicket = await request.get(`http://localhost:3000/api/tickets/${reqTicket.id}`, {
-      headers: { Cookie: reqLoginRes.headers()["set-cookie"] || "" },
-    });
+    const checkReqTicket = await request.get(`http://localhost:3000/api/tickets/${reqTicket.id}`);
     const fetchedReqTicket = await checkReqTicket.json();
     expect(fetchedReqTicket.status).not.toBe("RESOLVED");
     expect(fetchedReqTicket.status).toBe("IN_PROGRESS");
   });
 });
-
