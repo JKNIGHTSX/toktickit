@@ -90,6 +90,7 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [resolutionSummaryDraft, setResolutionSummaryDraft] = useState("");
+  const [actionsTakenCount, setActionsTakenCount] = useState<number | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [isStatusConflict, setIsStatusConflict] = useState<boolean>(false);
@@ -151,6 +152,10 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   useEffect(() => {
     loadTicket();
   }, [ticketId, user]);
+
+  useEffect(() => {
+    setActionsTakenCount(null);
+  }, [ticketId]);
 
   const handlePostComment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -724,6 +729,11 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                           Resolution summary must be at least 5 characters.
                         </div>
                       )}
+                      {actionsTakenCount === 0 && (
+                        <div id="resolution-action-required" className="text-danger small mt-1" role="status">
+                          Record at least one Action Taken before resolving this ticket.
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="d-flex flex-wrap gap-2">
@@ -734,7 +744,16 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                         className={action.status === "CANCELLED" ? "btn btn-sm btn-outline-danger" : "btn btn-sm btn-success"}
                         disabled={
                           isUpdatingStatus
-                          || (action.status === "RESOLVED" && resolutionSummaryDraft.trim().length < 5)
+                          || (action.status === "RESOLVED" && (
+                            resolutionSummaryDraft.trim().length < 5
+                            || actionsTakenCount === null
+                            || actionsTakenCount === 0
+                          ))
+                        }
+                        aria-describedby={
+                          action.status === "RESOLVED" && actionsTakenCount === 0
+                            ? "resolution-action-required"
+                            : undefined
                         }
                         onClick={() => handleUpdateStatus(action.status)}
                       >
@@ -805,7 +824,11 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
           </div>
 
           {/* Actions Taken Section (Lab 4) */}
-          <ActionsTakenComponent ticketId={ticket.id} ticketStatus={ticket.status} />
+          <ActionsTakenComponent
+            ticketId={ticket.id}
+            ticketStatus={ticket.status}
+            onActionsCountChange={setActionsTakenCount}
+          />
 
           <section className="card shadow-sm border mb-4" aria-labelledby="public-comments-heading" style={{ borderColor: "#A3D9B8", borderRadius: "8px" }}>
             <div className="card-header border-bottom" style={{ backgroundColor: "#EAF6EF", borderColor: "#A3D9B8" }}>
@@ -1206,4 +1229,3 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 }
 
 export default TicketDetail;
-

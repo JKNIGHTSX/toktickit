@@ -1,4 +1,4 @@
-import { test, expect, request as apiRequest } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Lab 4 — Issue #8: Role Dashboards & Drill-down Journey (E2E-03)
@@ -15,29 +15,28 @@ import { test, expect, request as apiRequest } from "@playwright/test";
 // ---------------------------------------------------------------------------
 // Credentials (seeded test accounts)
 // ---------------------------------------------------------------------------
-const STAFF_EMAIL = "michael.brown@toktickit.local";
+const STAFF_EMAIL = "tech1@toktickit.local";
 const STAFF_PASSWORD = "Password123!";
-const ADMIN_EMAIL = "sarah.johnson@toktickit.local";
+const ADMIN_EMAIL = "admin@toktickit.local";
 const ADMIN_PASSWORD = "Password123!";
 const REQUESTER_EMAIL = "jennifer.anderson@toktickit.local";
 const REQUESTER_PASSWORD = "Password123!";
 
-const API_BASE = "http://localhost:3000";
+async function signInAs(page: Page, email: string, password: string): Promise<void> {
+  await page.goto("/");
+  await page.getByLabel(/email/i).fill(email);
+  await page.locator("#passwordInput").fill(password);
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByRole("button", { name: /Dashboard/i })).toBeVisible();
+}
 
 test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
   // -------------------------------------------------------------------------
   // IT Staff Dashboard
   // -------------------------------------------------------------------------
   test.describe("IT Staff Dashboard", () => {
-    test("IT Staff sees Dashboard tab and 5 operational metric cards", async ({ page, request }) => {
-      // Login via API to establish session
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: STAFF_EMAIL, password: STAFF_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("IT Staff sees Dashboard tab and 5 operational metric cards", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
 
       // Dashboard tab should be visible
       await expect(page.getByRole("button", { name: /Dashboard/i })).toBeVisible();
@@ -56,14 +55,8 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.locator("text=Quick Actions")).toBeVisible();
     });
 
-    test("Clicking Ticket Queue tab navigates to queue view", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: STAFF_EMAIL, password: STAFF_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Clicking Ticket Queue tab navigates to queue view", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
 
       // Click Ticket Queue tab
       await page.getByRole("button", { name: /Ticket Queue/i }).click();
@@ -72,14 +65,16 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.locator("text=Ticket Queue").first()).toBeVisible();
     });
 
-    test("Clicking View Full Queue in Quick Actions navigates to staff queue", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: STAFF_EMAIL, password: STAFF_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
+    test("Status metric drill-down applies its filter to the ticket queue", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
+      await page.getByRole("button", { name: "Status: New - View queue" }).click();
 
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("heading", { name: /Ticket Queue/i })).toBeVisible();
+      await expect(page.locator("#staff-queue-filter-status")).toHaveValue("NEW");
+    });
+
+    test("Clicking View Full Queue in Quick Actions navigates to staff queue", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
 
       // Click "View Full Queue" quick action
       await page.getByRole("button", { name: /View Full Queue/i }).click();
@@ -88,15 +83,10 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.getByRole("button", { name: /Ticket Queue/i })).toBeVisible();
     });
 
-    test("Dashboard is responsive at tablet viewport (768px)", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: STAFF_EMAIL, password: STAFF_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
+    test("Dashboard is responsive at tablet viewport (768px)", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
 
       await page.setViewportSize({ width: 768, height: 1024 });
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
 
       // No horizontal overflow
       const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
@@ -107,15 +97,10 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.locator("text=New").first()).toBeVisible();
     });
 
-    test("Dashboard is responsive at mobile viewport (375px)", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: STAFF_EMAIL, password: STAFF_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
+    test("Dashboard is responsive at mobile viewport (375px)", async ({ page }) => {
+      await signInAs(page, STAFF_EMAIL, STAFF_PASSWORD);
 
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
 
       // No horizontal overflow
       const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
@@ -130,14 +115,8 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
   // Administrator Dashboard
   // -------------------------------------------------------------------------
   test.describe("Administrator Dashboard", () => {
-    test("Administrator sees Dashboard tab, operational metrics, AND user summary row", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Administrator sees Dashboard tab, operational metrics, AND user summary row", async ({ page }) => {
+      await signInAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
       // Dashboard tab visible
       await expect(page.getByRole("button", { name: /Dashboard/i })).toBeVisible();
@@ -147,21 +126,17 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
 
       // Admin-only user summary section
       await expect(page.locator("text=Total Users")).toBeVisible();
-      await expect(page.locator("text=Active Users")).toBeVisible();
-      await expect(page.locator("text=Inactive Users")).toBeVisible();
+      await expect(page.getByText("Active Users", { exact: true })).toBeVisible();
+      await expect(page.getByText("Inactive Users", { exact: true })).toBeVisible();
     });
 
-    test("Administrator sees Ticket Queue AND User Management tabs preserved", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Administrator sees Ticket Queue AND User Management tabs preserved", async ({ page }) => {
+      await signInAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
       await expect(page.getByRole("button", { name: /Ticket Queue/i })).toBeVisible();
       await expect(page.getByRole("button", { name: /User Management/i })).toBeVisible();
+      await page.getByRole("button", { name: /Ticket Queue/i }).click();
+      await expect(page.getByRole("heading", { name: /Ticket Queue/i })).toBeVisible();
     });
   });
 
@@ -169,14 +144,8 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
   // Requester Dashboard
   // -------------------------------------------------------------------------
   test.describe("Requester Dashboard", () => {
-    test("Requester sees Dashboard tab and 4 metric cards", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: REQUESTER_EMAIL, password: REQUESTER_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Requester sees Dashboard tab and 4 metric cards", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
       // Dashboard tab visible
       await expect(page.getByRole("button", { name: /Dashboard/i })).toBeVisible();
@@ -194,40 +163,29 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.locator("text=Quick Actions")).toBeVisible();
     });
 
-    test("Requester does NOT see IT Staff metrics (My Assigned / Waiting Req)", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: REQUESTER_EMAIL, password: REQUESTER_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
+    test("Requester metric drill-down applies its filter to My Tickets", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
+      await page.getByRole("button", { name: "Status: Open - View all" }).click();
 
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      await expect(page.locator("#filter-status")).toHaveValue("OPEN");
+    });
+
+    test("Requester does NOT see IT Staff metrics (My Assigned / Waiting Req)", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
       // These are IT Staff-only metric labels
       await expect(page.locator("text=My Assigned")).not.toBeVisible();
       await expect(page.locator("text=Waiting Req")).not.toBeVisible();
     });
 
-    test("Requester does NOT see User Management tab", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: REQUESTER_EMAIL, password: REQUESTER_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Requester does NOT see User Management tab", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
       await expect(page.getByRole("button", { name: /User Management/i })).not.toBeVisible();
     });
 
-    test("Clicking Submit New Ticket navigates to Create Ticket view", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: REQUESTER_EMAIL, password: REQUESTER_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    test("Clicking Submit New Ticket navigates to Create Ticket view", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
       await page.getByRole("button", { name: /Submit New Ticket/i }).click();
 
@@ -235,15 +193,10 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
       await expect(page.getByRole("button", { name: /Create Ticket/i }).first()).toBeVisible();
     });
 
-    test("Requester dashboard is responsive at mobile viewport (375px)", async ({ page, request }) => {
-      const loginRes = await request.post(`${API_BASE}/api/auth/login`, {
-        data: { email: REQUESTER_EMAIL, password: REQUESTER_PASSWORD },
-      });
-      expect(loginRes.ok()).toBeTruthy();
+    test("Requester dashboard is responsive at mobile viewport (375px)", async ({ page }) => {
+      await signInAs(page, REQUESTER_EMAIL, REQUESTER_PASSWORD);
 
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
 
       const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
       const viewportWidth = await page.evaluate(() => window.innerWidth);
@@ -253,4 +206,3 @@ test.describe("Lab 4 — E2E-03: Role Dashboards & Drill-down Journey", () => {
     });
   });
 });
-

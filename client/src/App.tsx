@@ -352,6 +352,19 @@ function AppContent() {
                   </li>
                   <li className="nav-item">
                     <button
+                      className={`nav-link ${view === "staff-queue" || view === "ticket-detail" ? "active fw-bold" : ""}`}
+                      id="nav-ticket-queue"
+                      onClick={() => {
+                        setQueueFilter({});
+                        setView("staff-queue");
+                      }}
+                      style={activeTabStyle(view === "staff-queue" || view === "ticket-detail")}
+                    >
+                      🗂 Ticket Queue
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
                       className={`nav-link ${view === "user-management" ? "active fw-bold" : ""}`}
                       id="nav-user-management"
                       onClick={() => setView("user-management")}

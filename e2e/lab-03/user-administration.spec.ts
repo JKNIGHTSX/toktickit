@@ -8,7 +8,9 @@ test.describe("Lab 3 - E2E Admin User Management Journey", () => {
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
 
-    // 2. Admin lands on User Management
+    await page.locator("#nav-user-management").click();
+
+    // 2. Open User Management from the role-based dashboard.
     await expect(page.locator("#nav-user-management")).toBeVisible();
     await expect(page.getByRole("heading", { name: /User Management/i })).toBeVisible();
 

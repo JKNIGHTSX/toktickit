@@ -139,6 +139,30 @@ describe("Lab 4 — Issue #4: Actions Taken UI Component Tests", () => {
     expect(screen.getByText(/no actions taken recorded yet/i)).toBeInTheDocument();
   });
 
+  it("keeps keyboard focus in the action dialog and closes it with Escape", async () => {
+    render(<ActionsTakenComponent ticketId={1} />);
+
+    await screen.findByRole("heading", { name: /actions taken \(2\)/i });
+    const openButton = screen.getByRole("button", { name: /\+ record action taken/i });
+    openButton.focus();
+    fireEvent.click(openButton);
+
+    const dialog = await screen.findByRole("dialog", { name: /record action taken/i });
+    const dateInput = screen.getByLabelText("Action Date & Time");
+    expect(dateInput).toHaveFocus();
+
+    const closeButton = screen.getByRole("button", { name: "Close" });
+    const saveButton = screen.getByRole("button", { name: "Save Action" });
+    saveButton.focus();
+    fireEvent.keyDown(saveButton, { key: "Tab" });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.keyDown(closeButton, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(openButton).toHaveFocus();
+    expect(dialog).not.toBeInTheDocument();
+  });
+
   it("UI-01: enforces Requester read-only restrictions (hides + Record Action Taken and Edit buttons)", async () => {
     vi.mocked(AuthContextModule.useAuth).mockReturnValue({
       user: requesterUser,

@@ -11,6 +11,8 @@ test.describe("Lab 2 - Requester Ticket Flow", () => {
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
 
+    await page.getByRole("button", { name: /Create Ticket/i }).click();
+
     // 3. Create Ticket page should be displayed
     await expect(
       page.getByRole("heading", { name: "Create Support Ticket" })

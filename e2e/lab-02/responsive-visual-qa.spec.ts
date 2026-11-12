@@ -69,6 +69,7 @@ test.describe("Lab 2 - Responsive and Visual QA", () => {
         await page.goto("/");
 
         await selectRequester(page);
+        await page.getByRole("button", { name: /Create Ticket/i }).click();
 
         await expect(
             page.getByRole("heading", { name: "Create Support Ticket" })
@@ -92,6 +93,7 @@ test.describe("Lab 2 - Responsive and Visual QA", () => {
         await page.goto("/");
 
         await selectRequester(page);
+        await page.getByRole("button", { name: /Create Ticket/i }).click();
 
         await expect(
             page.getByRole("heading", { name: "Create Support Ticket" })
@@ -115,6 +117,7 @@ test.describe("Lab 2 - Responsive and Visual QA", () => {
         await page.goto("/");
 
         await selectRequester(page);
+        await page.getByRole("button", { name: /Create Ticket/i }).click();
 
         await expect(
             page.getByRole("heading", { name: "Create Support Ticket" })
@@ -168,6 +171,7 @@ test.describe("Lab 2 - Responsive and Visual QA", () => {
         await page.goto("/");
 
         await selectRequester(page);
+        await page.getByRole("button", { name: /Create Ticket/i }).click();
 
         await expect(
             page.getByRole("heading", { name: "Create Support Ticket" })
@@ -233,6 +237,7 @@ test.describe("Lab 2 - Responsive and Visual QA", () => {
         await page.goto("/");
 
         await selectRequester(page);
+        await page.getByRole("button", { name: /Create Ticket/i }).click();
 
         const submitButton = page.getByRole("button", {
             name: /submit ticket/i,

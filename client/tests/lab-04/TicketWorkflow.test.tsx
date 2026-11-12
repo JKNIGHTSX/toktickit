@@ -19,6 +19,7 @@ vi.mock("../../src/api.js", async (importOriginal) => {
     fetchInternalNotes: vi.fn(),
     createInternalNote: vi.fn(),
     markTicketProblemResolved: vi.fn(),
+    fetchTicketActions: vi.fn(),
   };
 });
 
@@ -61,12 +62,33 @@ const baseTicket: api.TicketDetail = {
   updatedAt: "2026-10-05T10:30:00.000Z",
 };
 
+const existingAction: api.ActionTaken = {
+  id: 1,
+  ticketId: baseTicket.id,
+  performedById: staffUser.id,
+  performedBy: {
+    id: staffUser.id,
+    name: staffUser.name,
+    email: staffUser.email,
+    role: staffUser.role,
+  },
+  actionDateTime: "2026-10-05T10:15:00.000Z",
+  actionDescription: "Replaced faulty battery pack.",
+  result: "Battery charging normally.",
+  isFollowUpRequired: false,
+  followUpNote: null,
+  attachmentNotes: null,
+  createdAt: "2026-10-05T10:15:00.000Z",
+  updatedAt: "2026-10-05T10:15:00.000Z",
+};
+
 describe("Lab 4 — Issue #5: Ticket Workflow & Resolution Frontend Component (UI-02)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.fetchCurrentUser).mockResolvedValue(staffUser);
     vi.mocked(api.fetchTicketComments).mockResolvedValue([]);
     vi.mocked(api.fetchInternalNotes).mockResolvedValue([]);
+    vi.mocked(api.fetchTicketActions).mockResolvedValue([existingAction]);
     vi.mocked(api.fetchAssignableUsers).mockResolvedValue([
       { id: 2, name: "Tech One", email: "tech1@toktickit.local", role: "IT_STAFF", isActive: true },
     ]);
@@ -151,6 +173,24 @@ describe("Lab 4 — Issue #5: Ticket Workflow & Resolution Frontend Component (U
     expect(resolveButton).toBeEnabled();
   });
 
+  it("keeps Resolve Ticket disabled until at least one Action Taken is recorded", async () => {
+    vi.mocked(api.fetchTicketDetail).mockResolvedValue({ ...baseTicket, status: "IN_PROGRESS" });
+    vi.mocked(api.fetchTicketActions).mockResolvedValue([]);
+
+    render(
+      <AuthProvider>
+        <TicketDetail ticketId={baseTicket.id} onBack={vi.fn()} />
+      </AuthProvider>
+    );
+
+    await screen.findByText("Actions Taken (0)");
+    const summaryInput = screen.getByLabelText("Resolution Summary");
+    fireEvent.change(summaryInput, { target: { value: "Resolution is confirmed." } });
+
+    expect(screen.getByRole("button", { name: "Resolve Ticket" })).toBeDisabled();
+    expect(screen.getByText("Record at least one Action Taken before resolving this ticket.")).toBeInTheDocument();
+  });
+
   it("submits status transition to RESOLVED and passes expectedUpdatedAt timestamp (BR-19)", async () => {
     vi.mocked(api.fetchTicketDetail).mockResolvedValue({ ...baseTicket, status: "IN_PROGRESS" });
     vi.mocked(api.updateTicketStatus).mockResolvedValue({
@@ -222,7 +262,6 @@ describe("Lab 4 — Issue #5: Ticket Workflow & Resolution Frontend Component (U
           author: { id: requesterUser.id, name: requesterUser.name, role: "REQUESTER" },
           content: "The requester indicates that the problem appears resolved.",
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
       },
       message: "Resolution indication submitted and staff notified",
@@ -250,4 +289,3 @@ describe("Lab 4 — Issue #5: Ticket Workflow & Resolution Frontend Component (U
     });
   });
 });
-

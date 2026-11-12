@@ -38,18 +38,18 @@ async function resetInitialPassword(
 
 test.describe("Lab 3 - E2E Authentication Journey", () => {
   test("AC-01: IT Staff must change their initial password before entering the application", async ({ page, request }) => {
-    const adminId = await signInAdmin(request);
-    const techResponse = await request.get(`${apiUrl}/api/users?search=tech1%40toktickit.local`);
+    await signInAdmin(request);
+    const techResponse = await request.get(`${apiUrl}/api/users?search=tech3%40toktickit.local`);
     expect(techResponse.status()).toBe(200);
     const techUsers = await techResponse.json();
-    const techUser = techUsers.find((user: { email: string }) => user.email === "tech1@toktickit.local");
+    const techUser = techUsers.find((user: { email: string }) => user.email === "tech3@toktickit.local");
     expect(techUser).toBeDefined();
     await resetInitialPassword(request, techUser.id);
 
     await page.goto("/");
 
     await expect(page.getByLabel(/email/i)).toBeVisible();
-    await page.getByLabel(/email/i).fill("tech1@toktickit.local");
+    await page.getByLabel(/email/i).fill("tech3@toktickit.local");
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
 
@@ -64,7 +64,7 @@ test.describe("Lab 3 - E2E Authentication Journey", () => {
     await page.getByLabel(/Confirm new password/i).fill("TechChangedPass123!");
     await changePasswordButton.click();
 
-    await expect(page.getByText("Tech One", { exact: true })).toBeVisible();
+    await expect(page.getByText(techUser.name, { exact: true })).toBeVisible();
     await expect(page.getByText("IT Staff", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /logout/i })).toBeVisible();
     await expect(page.locator("#nav-ticket-queue")).toBeVisible();
@@ -73,7 +73,6 @@ test.describe("Lab 3 - E2E Authentication Journey", () => {
     await expect(page.getByLabel(/email/i)).toBeVisible();
 
     await resetInitialPassword(request, techUser.id);
-    await resetInitialPassword(request, adminId);
   });
 
   test("AC-02: inactive account login is rejected with safe error message", async ({ page }) => {
@@ -116,7 +115,7 @@ test.describe("Lab 3 - E2E Authentication Journey", () => {
     const tempPass = "InitialPass123!";
 
     // Admin login to provision user
-    const adminId = await signInAdmin(request);
+    await signInAdmin(request);
 
     const createUserRes = await request.post(`${apiUrl}/api/users`, {
       data: {
@@ -223,6 +222,5 @@ test.describe("Lab 3 - E2E Authentication Journey", () => {
     await page.getByRole("button", { name: /logout/i }).click();
     await expect(page.getByLabel(/email/i)).toBeVisible();
 
-    await resetInitialPassword(request, adminId);
   });
 });
