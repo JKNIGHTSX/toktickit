@@ -205,10 +205,10 @@ describe("Lab 3 — Issue #7: Public Comments and Internal Notes", () => {
 
     const response = await requesterAgent.post(`/api/tickets/${resolvingTicket.id}/problem-appears-resolved`);
     expect(response.status).toBe(200);
-    expect(response.body.data.ticket.status).toBe("RESOLVED");
+    expect(response.body.data.ticket.status).toBe("IN_PROGRESS");
     expect(response.body.data.comment).toMatchObject({
       authorId: requester.id,
-      content: "The requester indicates that the problem appears resolved.",
+      content: "The requester indicates that the problem appears resolved. Awaiting IT staff review and formal resolution.",
     });
   });
 });

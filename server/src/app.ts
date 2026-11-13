@@ -8,7 +8,7 @@ import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import { getPrisma } from "./prisma.js";
 import { generateTicketNumber } from "./utils/ticket-number.js";
-import { validateTicketInput } from "./utils/validators.js";
+import { validateTicketInput, validateActionTakenInput } from "./utils/validators.js";
 import { validatePasswordPolicy } from "./utils/password-policy.js";
 import {
   validateAttachmentFile,
@@ -76,8 +76,8 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ["OPEN", "CANCELLED"],
   OPEN: ["IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
-  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "CANCELLED"],
-  RESOLVED: ["CLOSED", "REOPENED", "CANCELLED"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "RESOLVED"],
+  RESOLVED: ["CLOSED", "REOPENED"],
   REOPENED: ["IN_PROGRESS", "CANCELLED"],
   CANCELLED: [],
   CLOSED: [],
@@ -1155,7 +1155,7 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
-    const { status, resolutionSummary } = req.body || {};
+    const { status, resolutionSummary, expectedUpdatedAt } = req.body || {};
     const requestedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
 
     if (!requestedStatus || !(VALID_TICKET_STATUSES as readonly string[]).includes(requestedStatus)) {
@@ -1171,9 +1171,16 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
+    // Role-based status authorization (BR-12, BR-17)
     if (sessionRole === "REQUESTER") {
       if (ticket.requesterId !== sessionUserId) {
         res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+        return;
+      }
+
+      // Requesters cannot directly set tickets to RESOLVED or CLOSED (BR-17, BR-18)
+      if (requestedStatus === "RESOLVED" || requestedStatus === "CLOSED") {
+        res.status(403).json({ error: "Forbidden: role cannot resolve or close tickets", code: "FORBIDDEN_ROLE" });
         return;
       }
 
@@ -1195,12 +1202,42 @@ app.patch("/api/tickets/:id/status", async (req: Request, res: Response) => {
       return;
     }
 
-    if (requestedStatus === "RESOLVED" && (!resolutionSummary || String(resolutionSummary).trim().length < 5)) {
-      res.status(422).json({
-        error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
-        code: "RESOLUTION_SUMMARY_REQUIRED",
+    // Optimistic Concurrency Check (BR-19)
+    if (expectedUpdatedAt !== undefined) {
+      const clientTimestamp = new Date(expectedUpdatedAt).getTime();
+      const serverTimestamp = ticket.updatedAt.getTime();
+      if (isNaN(clientTimestamp) || Math.abs(clientTimestamp - serverTimestamp) > 1000) {
+        res.status(409).json({
+          error: "Ticket has been modified by another user. Please refresh and try again.",
+          code: "STALE_UPDATE_CONFLICT",
+        });
+        return;
+      }
+    }
+
+    // Resolution Gate Enforcement (BR-15, BR-16, BR-17)
+    if (requestedStatus === "RESOLVED") {
+      // 1. Actions Taken prerequisite (BR-15)
+      const actionCount = await prisma.actionTaken.count({
+        where: { ticketId },
       });
-      return;
+
+      if (actionCount === 0) {
+        res.status(422).json({
+          error: "Cannot resolve ticket without at least one recorded Action Taken.",
+          code: "RESOLUTION_REQUIRES_ACTION_TAKEN",
+        });
+        return;
+      }
+
+      // 2. Resolution summary prerequisite (BR-16)
+      if (!resolutionSummary || typeof resolutionSummary !== "string" || resolutionSummary.trim().length < 5) {
+        res.status(422).json({
+          error: "A valid resolution summary (at least 5 characters) is required to resolve a ticket",
+          code: "RESOLUTION_SUMMARY_REQUIRED",
+        });
+        return;
+      }
     }
 
     if (requestedStatus === "CLOSED" && ticket.status !== "RESOLVED") {
@@ -1427,6 +1464,339 @@ app.post("/api/tickets/:id/notes", async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Actions Taken Endpoints (Lab 4 Issue 2)
+// ---------------------------------------------------------------------------
+
+// GET /api/tickets/:id/actions — List Actions Taken for Ticket
+app.get("/api/tickets/:id/actions", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, requesterId: true },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    // Role check: Requester can only view actions on owned tickets
+    if (sessionRole === "REQUESTER" && ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const actions = await prisma.actionTaken.findMany({
+      where: { ticketId },
+      orderBy: { actionDateTime: "desc" },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({ data: actions });
+  } catch (_err) {
+    console.error("GET /api/tickets/:id/actions error:", _err);
+    res.status(500).json({ error: "Failed to fetch actions taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// POST /api/tickets/:id/actions — Create Action Taken
+app.post("/api/tickets/:id/actions", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    // Role check: IT_STAFF and ADMINISTRATOR only
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: Only IT Staff and Administrators can record Actions Taken",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const ticketId = Number(String(req.params.id));
+    if (!Number.isInteger(ticketId) || ticketId <= 0) {
+      res.status(400).json({ error: "Invalid ticket ID", code: "INVALID_TICKET_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(403).json({
+        error: "Forbidden: Inactive users cannot perform actions",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, status: true },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found", code: "TICKET_NOT_FOUND" });
+      return;
+    }
+
+    if (ticket.status === "CLOSED") {
+      res.status(422).json({
+        error: "Cannot add actions taken to a closed ticket",
+        code: "TICKET_CLOSED",
+      });
+      return;
+    }
+
+    const validation = validateActionTakenInput(req.body || {});
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: validation.errors[0]?.message || "Validation failed",
+        code: validation.code || "VALIDATION_ERROR",
+        details: validation.errors,
+      });
+      return;
+    }
+
+    const created = await prisma.actionTaken.create({
+      data: {
+        ticketId,
+        performedById: sessionUserId, // Always bound from authenticated session
+        actionDateTime: validation.sanitized.actionDateTime,
+        actionDescription: validation.sanitized.actionDescription,
+        result: validation.sanitized.result,
+        isFollowUpRequired: validation.sanitized.isFollowUpRequired,
+        followUpNote: validation.sanitized.followUpNote,
+        attachmentNotes: validation.sanitized.attachmentNotes,
+      },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      data: created,
+      message: "Action taken recorded successfully",
+    });
+  } catch (_err) {
+    console.error("POST /api/tickets/:id/actions error:", _err);
+    res.status(500).json({ error: "Failed to create action taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// GET /api/actions/:id — Get single Action Taken record
+app.get("/api/actions/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const actionId = Number(String(req.params.id));
+    if (!Number.isInteger(actionId) || actionId <= 0) {
+      res.status(400).json({ error: "Invalid action ID", code: "INVALID_ACTION_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const action = await prisma.actionTaken.findUnique({
+      where: { id: actionId },
+      include: {
+        ticket: { select: { id: true, requesterId: true } },
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!action) {
+      res.status(404).json({ error: "Action taken not found", code: "ACTION_NOT_FOUND" });
+      return;
+    }
+
+    if (sessionRole === "REQUESTER" && action.ticket.requesterId !== sessionUserId) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_TICKET_ACCESS" });
+      return;
+    }
+
+    if (sessionRole !== "REQUESTER" && !isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({ error: "Forbidden access", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    const { ticket: _ticket, ...actionData } = action;
+    res.status(200).json({ data: actionData });
+  } catch (_err) {
+    console.error("GET /api/actions/:id error:", _err);
+    res.status(500).json({ error: "Failed to fetch action taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// PATCH /api/actions/:id — Update Action Taken record
+app.patch("/api/actions/:id", async (req: Request, res: Response) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    const sessionRole = req.session?.role;
+    if (!sessionUserId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (!isRoleStaffOrAdmin(sessionRole)) {
+      res.status(403).json({
+        error: "Forbidden: Only IT Staff and Administrators can update Actions Taken",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const actionId = Number(String(req.params.id));
+    if (!Number.isInteger(actionId) || actionId <= 0) {
+      res.status(400).json({ error: "Invalid action ID", code: "INVALID_ACTION_ID" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(403).json({
+        error: "Forbidden: Inactive users cannot perform actions",
+        code: "FORBIDDEN",
+      });
+      return;
+    }
+
+    const existingAction = await prisma.actionTaken.findUnique({
+      where: { id: actionId },
+    });
+
+    if (!existingAction) {
+      res.status(404).json({ error: "Action taken not found", code: "ACTION_NOT_FOUND" });
+      return;
+    }
+
+    // Optimistic Concurrency Check
+    const { expectedUpdatedAt } = req.body || {};
+    if (expectedUpdatedAt !== undefined) {
+      const clientTimestamp = new Date(expectedUpdatedAt).getTime();
+      const serverTimestamp = existingAction.updatedAt.getTime();
+      // Compare with 1000ms window as specified
+      if (isNaN(clientTimestamp) || Math.abs(clientTimestamp - serverTimestamp) > 1000) {
+        res.status(409).json({
+          error: "Action Taken record has been modified by another user. Please refresh and try again.",
+          code: "STALE_UPDATE_CONFLICT",
+        });
+        return;
+      }
+    }
+
+    // Merge existing values for fields not provided
+    const mergedInput: any = {
+      actionDescription: req.body.actionDescription !== undefined ? req.body.actionDescription : existingAction.actionDescription,
+      result: req.body.result !== undefined ? req.body.result : existingAction.result,
+      isFollowUpRequired: req.body.isFollowUpRequired !== undefined ? req.body.isFollowUpRequired : existingAction.isFollowUpRequired,
+      followUpNote: req.body.followUpNote !== undefined ? req.body.followUpNote : existingAction.followUpNote,
+      attachmentNotes: req.body.attachmentNotes !== undefined ? req.body.attachmentNotes : existingAction.attachmentNotes,
+      actionDateTime: req.body.actionDateTime !== undefined ? req.body.actionDateTime : existingAction.actionDateTime.toISOString(),
+    };
+
+    const validation = validateActionTakenInput(mergedInput, { isUpdate: true });
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: validation.errors[0]?.message || "Validation failed",
+        code: validation.code || "VALIDATION_ERROR",
+        details: validation.errors,
+      });
+      return;
+    }
+
+    const updated = await prisma.actionTaken.update({
+      where: { id: actionId },
+      data: {
+        actionDescription: validation.sanitized.actionDescription,
+        result: validation.sanitized.result,
+        isFollowUpRequired: validation.sanitized.isFollowUpRequired,
+        followUpNote: validation.sanitized.followUpNote,
+        attachmentNotes: validation.sanitized.attachmentNotes,
+        actionDateTime: validation.sanitized.actionDateTime,
+      },
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      data: updated,
+      message: "Action taken updated successfully",
+    });
+  } catch (_err) {
+    console.error("PATCH /api/actions/:id error:", _err);
+    res.status(500).json({ error: "Failed to update action taken", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
 // POST /api/tickets/:id/problem-appears-resolved — Requester resolution indication
 app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: Response) => {
   try {
@@ -1462,16 +1832,16 @@ app.post("/api/tickets/:id/problem-appears-resolved", async (req: Request, res: 
       return;
     }
 
-    const content = "The requester indicates that the problem appears resolved.";
+    const content = "The requester indicates that the problem appears resolved. Awaiting IT staff review and formal resolution.";
     const [updatedTicket, comment] = await prisma.$transaction([
-      prisma.ticket.update({ where: { id: ticketId }, data: { status: "RESOLVED" } }),
+      prisma.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } }),
       prisma.publicComment.create({
         data: { ticketId, authorId: sessionUserId, content },
         include: { author: { select: { id: true, name: true, role: true } } },
       }),
     ]);
 
-    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Problem marked as appearing resolved" });
+    res.status(200).json({ data: { ticket: updatedTicket, comment }, message: "Resolution indication submitted and staff notified" });
   } catch (_err) {
     res.status(500).json({ error: "Failed to record resolution indication", code: "INTERNAL_SERVER_ERROR" });
   }
@@ -2339,7 +2709,321 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Lab 4 Issue #7: Requester Dashboard Endpoint
+// ---------------------------------------------------------------------------
+
+// GET /api/dashboard/requester
+app.get("/api/dashboard/requester", async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated access", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({ error: "User not found or inactive", code: "UNAUTHENTICATED" });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({ error: "Password change required before accessing the application", code: "MUST_CHANGE_PASSWORD" });
+      return;
+    }
+
+    if (currentUser.role !== "REQUESTER") {
+      res.status(403).json({ error: "Forbidden: Requester dashboard is accessible to Requesters only", code: "FORBIDDEN_ROLE" });
+      return;
+    }
+
+    // requesterId derived exclusively from authenticated session (BR-20, BR-27)
+    const requesterId = currentUser.id;
+
+    const [totalOpen, inProgress, resolved, closed, recentTickets] = await Promise.all([
+      prisma.ticket.count({ where: { requesterId, status: { in: ["NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER", "REOPENED"] } } }),
+      prisma.ticket.count({ where: { requesterId, status: "IN_PROGRESS" } }),
+      prisma.ticket.count({ where: { requesterId, status: "RESOLVED" } }),
+      prisma.ticket.count({ where: { requesterId, status: "CLOSED" } }),
+      prisma.ticket.findMany({
+        where: { requesterId },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          ticketNumber: true,
+          summary: true,
+          status: true,
+          requestedPriority: true,
+          updatedAt: true,
+          category: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    res.status(200).json({
+      data: {
+        metrics: {
+          totalOpen: totalOpen || 0,
+          inProgress: inProgress || 0,
+          resolved: resolved || 0,
+          closed: closed || 0,
+        },
+        recentTickets: recentTickets.map((t) => ({
+          id: t.id,
+          ticketNumber: t.ticketNumber,
+          summary: t.summary,
+          status: t.status,
+          requestedPriority: t.requestedPriority,
+          updatedAt: t.updatedAt,
+          category: t.category,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/requester error:", error);
+    res.status(500).json({ error: "Internal server error retrieving requester dashboard data", code: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+// Lab 4 Issue #6: IT Staff & Administrator Dashboard Endpoints
+// ---------------------------------------------------------------------------
+
+const ACTIVE_TICKET_STATUSES = [
+  "NEW",
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_FOR_REQUESTER",
+  "REOPENED",
+] as const;
+
+/**
+ * Helper to fetch operational metrics and recent tickets for IT Staff and Administrator dashboards.
+ */
+async function getStaffDashboardData(prisma: any, currentUserId: number) {
+  // Run status aggregations, myAssignedTickets count, and recent tickets in parallel
+  const [statusGroups, myAssignedCount, recentTickets] = await Promise.all([
+    // Group count by status for NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER
+    prisma.ticket.groupBy({
+      by: ["status"],
+      where: {
+        status: {
+          in: ["NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER"],
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    // Count active tickets assigned to the current user
+    prisma.ticket.count({
+      where: {
+        ownerId: currentUserId,
+        status: {
+          in: ACTIVE_TICKET_STATUSES as any,
+        },
+      },
+    }),
+    // Up to 5 most recently updated active tickets assigned to current user or unassigned
+    prisma.ticket.findMany({
+      where: {
+        status: {
+          in: ACTIVE_TICKET_STATUSES as any,
+        },
+        OR: [
+          { ownerId: currentUserId },
+          { ownerId: null },
+        ],
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 5,
+      select: {
+        id: true,
+        ticketNumber: true,
+        summary: true,
+        status: true,
+        itPriority: true,
+        updatedAt: true,
+        requester: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const statusMap: Record<string, number> = {
+    NEW: 0,
+    OPEN: 0,
+    IN_PROGRESS: 0,
+    WAITING_FOR_REQUESTER: 0,
+  };
+
+  for (const group of statusGroups) {
+    statusMap[group.status] = group._count._all;
+  }
+
+  return {
+    metrics: {
+      newTickets: statusMap["NEW"] || 0,
+      openTickets: statusMap["OPEN"] || 0,
+      inProgressTickets: statusMap["IN_PROGRESS"] || 0,
+      waitingForRequesterTickets: statusMap["WAITING_FOR_REQUESTER"] || 0,
+      myAssignedTickets: myAssignedCount || 0,
+    },
+    recentTickets: recentTickets.map((t: any) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      summary: t.summary,
+      status: t.status,
+      itPriority: t.itPriority,
+      requester: t.requester,
+      owner: t.owner,
+      updatedAt: t.updatedAt,
+    })),
+  };
+}
+
+// GET /api/dashboard/staff
+app.get("/api/dashboard/staff", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({
+        error: "User not found or inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+
+    if (currentUser.role !== "IT_STAFF" && currentUser.role !== "ADMINISTRATOR") {
+      res.status(403).json({
+        error: "Forbidden: Staff dashboard requires IT Staff or Administrator role",
+        code: "FORBIDDEN_ROLE",
+      });
+      return;
+    }
+
+    const dashboardData = await getStaffDashboardData(prisma, currentUser.id);
+
+    res.status(200).json({
+      data: dashboardData,
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/staff error:", error);
+    res.status(500).json({
+      error: "Internal server error retrieving staff dashboard data",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+// GET /api/dashboard/admin
+app.get("/api/dashboard/admin", async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthenticated access",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!currentUser || !currentUser.isActive) {
+      res.status(401).json({
+        error: "User not found or inactive",
+        code: "UNAUTHENTICATED",
+      });
+      return;
+    }
+
+    if (currentUser.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required before accessing the application",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+      return;
+    }
+
+    if (currentUser.role !== "ADMINISTRATOR") {
+      res.status(403).json({
+        error: "Forbidden: Administrator dashboard requires Administrator role",
+        code: "FORBIDDEN_ROLE",
+      });
+      return;
+    }
+
+    // Parallel fetch: staff dashboard data + user counts
+    const [staffData, totalUsers, activeUsers] = await Promise.all([
+      getStaffDashboardData(prisma, currentUser.id),
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+    ]);
+
+    const inactiveUsers = totalUsers - activeUsers;
+
+    res.status(200).json({
+      data: {
+        metrics: {
+          ...staffData.metrics,
+          userSummary: {
+            totalUsers,
+            activeUsers,
+            inactiveUsers,
+          },
+        },
+        recentTickets: staffData.recentTickets,
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/dashboard/admin error:", error);
+    res.status(500).json({
+      error: "Internal server error retrieving administrator dashboard data",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
 export default app;
-
-
-

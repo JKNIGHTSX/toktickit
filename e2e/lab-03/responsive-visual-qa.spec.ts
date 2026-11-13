@@ -38,7 +38,7 @@ test.describe("Lab 3 - Responsive and Visual QA", () => {
     });
     expect(adminLoginRes.ok()).toBeTruthy();
 
-    await request.post("http://localhost:3000/api/users", {
+    const createUserResponse = await request.post("http://localhost:3000/api/users", {
       data: {
         name: "Password QA User",
         email,
@@ -47,6 +47,7 @@ test.describe("Lab 3 - Responsive and Visual QA", () => {
         initialPassword: tempPass,
       },
     });
+    expect(createUserResponse.status()).toBe(201);
 
     // Login once at desktop size to reach the Change Password screen
     await page.setViewportSize(viewports.desktop);
@@ -74,6 +75,7 @@ test.describe("Lab 3 - Responsive and Visual QA", () => {
     await page.getByLabel(/email/i).fill("tech1@toktickit.local");
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
+    await page.locator("#nav-ticket-queue").click();
     await expect(page.getByRole("heading", { name: /Ticket Queue/i })).toBeVisible();
 
     for (const [device, viewport] of Object.entries(viewports)) {
@@ -99,6 +101,7 @@ test.describe("Lab 3 - Responsive and Visual QA", () => {
       await page.getByRole("button", { name: /sign in/i }).click();
     }
 
+    await page.locator("#nav-ticket-queue").click();
     await expect(page.getByRole("heading", { name: /Ticket Queue/i })).toBeVisible();
 
     // Click the first ticket in the table
@@ -125,6 +128,7 @@ test.describe("Lab 3 - Responsive and Visual QA", () => {
     await page.getByLabel(/email/i).fill("admin@toktickit.local");
     await page.locator("#passwordInput").fill("Password123!");
     await page.getByRole("button", { name: /sign in/i }).click();
+    await page.locator("#nav-user-management").click();
     await expect(page.getByRole("heading", { name: /User Management/i })).toBeVisible();
 
     for (const [device, viewport] of Object.entries(viewports)) {

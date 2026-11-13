@@ -166,7 +166,7 @@ describe("first-login authentication route guard", () => {
       // Role-based navigation isolation assertions
       if (role === "ADMINISTRATOR") {
         expect(screen.getByRole("button", { name: /user management/i })).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: /ticket queue/i })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /ticket queue/i })).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: /\+ create ticket/i })).not.toBeInTheDocument();
       } else if (role === "IT_STAFF") {
         expect(screen.getByRole("button", { name: /ticket queue/i })).toBeInTheDocument();

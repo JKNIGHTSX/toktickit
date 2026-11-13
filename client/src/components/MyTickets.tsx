@@ -10,12 +10,18 @@ import {
 } from "../api.js";
 import { useAuth } from "../context/AuthContext.js";
 
-interface MyTicketsProps {
-  onCreateTicket?: () => void;
-  onSelectTicket?: (idOrNumber: number | string) => void;
+export interface MyTicketsFilter {
+  status?: string;
 }
 
-export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
+export interface MyTicketsProps {
+  onCreateTicket?: () => void;
+  onSelectTicket?: (idOrNumber: number | string) => void;
+  initialFilter?: MyTicketsFilter;
+  filter?: MyTicketsFilter;
+}
+
+export function MyTickets({ onCreateTicket, onSelectTicket, initialFilter, filter }: MyTicketsProps) {
   const { user } = useAuth();
 
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -32,16 +38,30 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const activeInitialFilter = filter ?? initialFilter;
+
   // Filter & Sort State
   const [search, setSearch] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [requestedPriority, setRequestedPriority] = useState<string>("");
   const [itPriority, setItPriority] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(activeInitialFilter?.status ?? "");
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  const prevFilterRef = React.useRef<MyTicketsFilter | undefined>(activeInitialFilter);
+
+  // Synchronize when external filter prop updates
+  useEffect(() => {
+    const current = filter ?? initialFilter;
+    if (current && current.status !== prevFilterRef.current?.status) {
+      prevFilterRef.current = current;
+      setStatus(current.status ?? "");
+      setPage(1);
+    }
+  }, [filter, initialFilter]);
 
   // Check if any filter is active
   const hasActiveFilters =
@@ -324,7 +344,7 @@ export function MyTickets({ onCreateTicket, onSelectTicket }: MyTicketsProps) {
                 }}
                 style={{ borderColor: "#D1D9D4" }}
               >
-                <option value="">All Statuses</option>
+                <option value="">All Tickets</option>
                 <option value="NEW">New</option>
                 <option value="OPEN">Open</option>
                 <option value="IN_PROGRESS">In Progress</option>

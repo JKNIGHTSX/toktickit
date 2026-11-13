@@ -194,10 +194,10 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
       expect(isValidStatusTransition("IN_PROGRESS", "RESOLVED")).toBe(true);
       expect(isValidStatusTransition("IN_PROGRESS", "CANCELLED")).toBe(true);
       expect(isValidStatusTransition("WAITING_FOR_REQUESTER", "IN_PROGRESS")).toBe(true);
-      expect(isValidStatusTransition("WAITING_FOR_REQUESTER", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("WAITING_FOR_REQUESTER", "RESOLVED")).toBe(true);
       expect(isValidStatusTransition("RESOLVED", "CLOSED")).toBe(true);
       expect(isValidStatusTransition("RESOLVED", "REOPENED")).toBe(true);
-      expect(isValidStatusTransition("RESOLVED", "CANCELLED")).toBe(true);
+      expect(isValidStatusTransition("RESOLVED", "CANCELLED")).toBe(false);
       expect(isValidStatusTransition("REOPENED", "IN_PROGRESS")).toBe(true);
       expect(isValidStatusTransition("REOPENED", "CANCELLED")).toBe(true);
     });
@@ -308,6 +308,14 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
         },
       });
       createdTicketIds.push(testResTicket.id);
+      await prisma.actionTaken.create({
+        data: {
+          ticket: { connect: { id: testResTicket.id } },
+          performedBy: { connect: { id: itStaff.id } },
+          actionDescription: "Investigated issue and completed repair.",
+          result: "Resolved successfully",
+        },
+      });
 
       // Without resolutionSummary
       const missingSummaryRes = await itStaffAgent
@@ -339,6 +347,14 @@ describe("Lab 3 — Issue #6: Staff Ticket Detail Access", () => {
         },
       });
       createdTicketIds.push(testResTicket.id);
+      await prisma.actionTaken.create({
+        data: {
+          ticket: { connect: { id: testResTicket.id } },
+          performedBy: { connect: { id: itStaff.id } },
+          actionDescription: "Investigated issue and completed repair.",
+          result: "Resolved successfully",
+        },
+      });
 
       const res = await itStaffAgent
         .patch(`/api/tickets/${testResTicket.id}/status`)

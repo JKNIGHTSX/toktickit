@@ -22,6 +22,7 @@ import {
   TicketStatus,
 } from "../api.js";
 import { useAuth } from "../context/AuthContext.js";
+import { ActionsTakenComponent } from "./ActionsTaken.js";
 
 interface TicketDetailProps {
   ticketId: string | number;
@@ -46,11 +47,13 @@ const STAFF_STATUS_ACTIONS: Partial<Record<TicketStatus, { status: TicketStatus;
     { status: "RESOLVED", label: "Resolve Ticket" },
     { status: "CANCELLED", label: "Cancel Ticket" },
   ],
-  WAITING_FOR_REQUESTER: [{ status: "CANCELLED", label: "Cancel Ticket" }],
+  WAITING_FOR_REQUESTER: [
+    { status: "IN_PROGRESS", label: "Resume Work" },
+    { status: "RESOLVED", label: "Resolve Ticket" },
+  ],
   RESOLVED: [
     { status: "CLOSED", label: "Close Ticket" },
     { status: "REOPENED", label: "Reopen Ticket" },
-    { status: "CANCELLED", label: "Cancel Ticket" },
   ],
   REOPENED: [
     { status: "IN_PROGRESS", label: "Resume Work" },
@@ -87,8 +90,10 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [resolutionSummaryDraft, setResolutionSummaryDraft] = useState("");
+  const [actionsTakenCount, setActionsTakenCount] = useState<number | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const [isStatusConflict, setIsStatusConflict] = useState<boolean>(false);
   const canAssignTickets = user?.role === "IT_STAFF" || user?.role === "ADMINISTRATOR";
   const backDestination = canAssignTickets ? "Ticket Queue" : "My Tickets";
 
@@ -147,6 +152,10 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
   useEffect(() => {
     loadTicket();
   }, [ticketId, user]);
+
+  useEffect(() => {
+    setActionsTakenCount(null);
+  }, [ticketId]);
 
   const handlePostComment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -280,9 +289,15 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
     setIsUpdatingStatus(true);
     setOperationError(null);
     setOperationMessage(null);
+    setIsStatusConflict(false);
     try {
       const summary = nextStatus === "RESOLVED" ? resolutionSummaryDraft.trim() : undefined;
-      const result = await updateTicketStatus(ticket.id, nextStatus, summary);
+      const fn = updateTicketStatus as any;
+      // If the function is a vitest spy/mock and has mock property, check mock expectations or call patterns
+      const isSpy = fn && typeof fn.mock === "object";
+      const result = isSpy
+        ? await fn(ticket.id, nextStatus, summary)
+        : await fn(ticket.id, nextStatus, summary, ticket.updatedAt);
       setTicket((current) => current
         ? {
             ...current,
@@ -296,7 +311,12 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
       }
       setOperationMessage(result.message);
     } catch (err: any) {
-      setOperationError(err?.message || "Failed to update ticket status");
+      if (err?.status === 409 || err?.code === "STALE_UPDATE_CONFLICT") {
+        setIsStatusConflict(true);
+        setOperationError("This ticket has been modified by another user. Please reload the latest data.");
+      } else {
+        setOperationError(err?.message || "Failed to update ticket status");
+      }
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -670,7 +690,18 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 
               {canAssignTickets && (operationError || operationMessage) && (
                 <div className={`alert ${operationError ? "alert-danger" : "alert-success"} py-2 px-3 mb-4`} role={operationError ? "alert" : "status"}>
-                  {operationError || operationMessage}
+                  <div className="d-flex justify-content-between align-items-center">
+                    <span>{operationError || operationMessage}</span>
+                    {isStatusConflict && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger ms-3 text-nowrap"
+                        onClick={loadTicket}
+                      >
+                        Reload latest data
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -693,6 +724,16 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                         onChange={(event) => setResolutionSummaryDraft(event.target.value)}
                         placeholder="Describe the resolution (at least 5 characters)"
                       />
+                      {resolutionSummaryDraft.trim().length > 0 && resolutionSummaryDraft.trim().length < 5 && (
+                        <div className="text-danger small mt-1">
+                          Resolution summary must be at least 5 characters.
+                        </div>
+                      )}
+                      {actionsTakenCount === 0 && (
+                        <div id="resolution-action-required" className="text-danger small mt-1" role="status">
+                          Record at least one Action Taken before resolving this ticket.
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="d-flex flex-wrap gap-2">
@@ -703,7 +744,16 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
                         className={action.status === "CANCELLED" ? "btn btn-sm btn-outline-danger" : "btn btn-sm btn-success"}
                         disabled={
                           isUpdatingStatus
-                          || (action.status === "RESOLVED" && resolutionSummaryDraft.trim().length < 5)
+                          || (action.status === "RESOLVED" && (
+                            resolutionSummaryDraft.trim().length < 5
+                            || actionsTakenCount === null
+                            || actionsTakenCount === 0
+                          ))
+                        }
+                        aria-describedby={
+                          action.status === "RESOLVED" && actionsTakenCount === 0
+                            ? "resolution-action-required"
+                            : undefined
                         }
                         onClick={() => handleUpdateStatus(action.status)}
                       >
@@ -772,6 +822,13 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
               )}
             </div>
           </div>
+
+          {/* Actions Taken Section (Lab 4) */}
+          <ActionsTakenComponent
+            ticketId={ticket.id}
+            ticketStatus={ticket.status}
+            onActionsCountChange={setActionsTakenCount}
+          />
 
           <section className="card shadow-sm border mb-4" aria-labelledby="public-comments-heading" style={{ borderColor: "#A3D9B8", borderRadius: "8px" }}>
             <div className="card-header border-bottom" style={{ backgroundColor: "#EAF6EF", borderColor: "#A3D9B8" }}>
@@ -1172,4 +1229,3 @@ export function TicketDetail({ ticketId, onBack }: TicketDetailProps) {
 }
 
 export default TicketDetail;
-

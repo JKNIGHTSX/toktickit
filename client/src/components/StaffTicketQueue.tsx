@@ -190,15 +190,22 @@ function SortHeader({ label, field, currentSortBy, currentSortOrder, onSort }: S
 // ---------------------------------------------------------------------------
 // StaffTicketQueue Props
 // ---------------------------------------------------------------------------
+export interface StaffQueueFilter {
+  status?: string;
+  assignedTo?: string;
+}
+
 export interface StaffTicketQueueProps {
   onSelectTicket?: (ticketId: number | string) => void;
   onCreateTicket?: () => void;
+  initialFilter?: StaffQueueFilter;
+  filter?: StaffQueueFilter;
 }
 
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
-export function StaffTicketQueue({ onSelectTicket, onCreateTicket }: StaffTicketQueueProps) {
+export function StaffTicketQueue({ onSelectTicket, onCreateTicket, initialFilter, filter }: StaffTicketQueueProps) {
   const { user } = useAuth();
   const [tickets, setTickets] = useState<TicketQueueItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMetadata>({
@@ -214,18 +221,37 @@ export function StaffTicketQueue({ onSelectTicket, onCreateTicket }: StaffTicket
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState<boolean>(false);
 
+  const activeInitialFilter = filter ?? initialFilter;
+
   // Filter state
   const [search, setSearch] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [requestedPriority, setRequestedPriority] = useState<string>("");
   const [itPriority, setItPriority] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
-  const [assignedTo, setAssignedTo] = useState<string>("");
+  const [status, setStatus] = useState<string>(activeInitialFilter?.status ?? "");
+  const [assignedTo, setAssignedTo] = useState<string>(activeInitialFilter?.assignedTo ?? "");
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState<number>(1);
   const pageSize = 10;
+
+  const prevFilterRef = useRef<StaffQueueFilter | undefined>(activeInitialFilter);
+
+  // Synchronize when external filter prop updates
+  useEffect(() => {
+    const current = filter ?? initialFilter;
+    if (
+      current &&
+      (current.status !== prevFilterRef.current?.status ||
+        current.assignedTo !== prevFilterRef.current?.assignedTo)
+    ) {
+      prevFilterRef.current = current;
+      setStatus(current.status ?? "");
+      setAssignedTo(current.assignedTo ?? "");
+      setPage(1);
+    }
+  }, [filter, initialFilter]);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -467,7 +493,7 @@ export function StaffTicketQueue({ onSelectTicket, onCreateTicket }: StaffTicket
         onChange={(e) => setStatus(e.target.value)}
         style={selectStyle}
       >
-        <option value="">All Statuses</option>
+        <option value="">All Tickets</option>
         <option value="NEW">New</option>
         <option value="OPEN">Open</option>
         <option value="IN_PROGRESS">In Progress</option>

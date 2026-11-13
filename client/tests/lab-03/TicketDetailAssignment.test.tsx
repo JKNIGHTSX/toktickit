@@ -20,6 +20,7 @@ vi.mock("../../src/api.js", async (importOriginal) => {
     fetchInternalNotes: vi.fn(),
     createInternalNote: vi.fn(),
     markTicketProblemResolved: vi.fn(),
+    fetchTicketActions: vi.fn(),
   };
 });
 
@@ -53,6 +54,26 @@ const ticket: api.TicketDetail = {
   updatedAt: "2026-10-05T10:00:00.000Z",
 };
 
+const existingAction: api.ActionTaken = {
+  id: 1,
+  ticketId: ticket.id,
+  performedById: staffUser.id,
+  performedBy: {
+    id: staffUser.id,
+    name: staffUser.name,
+    email: staffUser.email,
+    role: staffUser.role,
+  },
+  actionDateTime: "2026-10-05T10:15:00.000Z",
+  actionDescription: "Replaced faulty battery pack.",
+  result: "Battery charging normally.",
+  isFollowUpRequired: false,
+  followUpNote: null,
+  attachmentNotes: null,
+  createdAt: "2026-10-05T10:15:00.000Z",
+  updatedAt: "2026-10-05T10:15:00.000Z",
+};
+
 describe("Ticket Detail assignment controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,6 +92,7 @@ describe("Ticket Detail assignment controls", () => {
       message: "Public comment posted",
     });
     vi.mocked(api.fetchInternalNotes).mockResolvedValue([]);
+    vi.mocked(api.fetchTicketActions).mockResolvedValue([]);
     vi.mocked(api.createInternalNote).mockResolvedValue({
       data: {
         id: 902,
@@ -152,6 +174,7 @@ describe("Ticket Detail assignment controls", () => {
 
   it("requires a resolution summary and submits a permitted status transition", async () => {
     vi.mocked(api.fetchTicketDetail).mockResolvedValue({ ...ticket, status: "IN_PROGRESS" });
+    vi.mocked(api.fetchTicketActions).mockResolvedValue([existingAction]);
 
     render(
       <AuthProvider>

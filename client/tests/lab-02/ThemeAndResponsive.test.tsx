@@ -23,6 +23,7 @@ vi.mock("../../src/api", () => ({
   fetchInternalNotes: vi.fn(),
   createInternalNote: vi.fn(),
   markTicketProblemResolved: vi.fn(),
+  fetchTicketActions: vi.fn(),
   softRemoveAttachment: vi.fn(),
   uploadAttachment: vi.fn(),
   getAttachmentDownloadUrl: vi.fn(
@@ -73,6 +74,7 @@ describe("UI-12: Zen Green Styling & Theme Token Tests", () => {
     vi.clearAllMocks();
     (api.fetchTicketComments as any).mockResolvedValue([]);
     (api.fetchInternalNotes as any).mockResolvedValue([]);
+    (api.fetchTicketActions as any).mockResolvedValue([]);
   });
 
   // --- RequesterSelect Zen Green palette checks ---

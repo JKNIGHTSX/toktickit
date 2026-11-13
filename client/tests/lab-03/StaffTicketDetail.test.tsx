@@ -21,6 +21,7 @@ vi.mock("../../src/api.js", async (importOriginal) => {
     fetchInternalNotes: vi.fn(),
     createInternalNote: vi.fn(),
     markTicketProblemResolved: vi.fn(),
+    fetchTicketActions: vi.fn(),
   };
 });
 
@@ -61,6 +62,7 @@ describe("StaffTicketDetail Component Tests", () => {
     vi.mocked(api.fetchTicketDetail).mockResolvedValue(ticket);
     vi.mocked(api.fetchTicketComments).mockResolvedValue([]);
     vi.mocked(api.fetchInternalNotes).mockResolvedValue([]);
+    vi.mocked(api.fetchTicketActions).mockResolvedValue([]);
     vi.mocked(api.fetchAssignableUsers).mockResolvedValue([
       { id: 2, name: "Tech One", email: "tech1@toktickit.local", role: "IT_STAFF", isActive: true },
       { id: 3, name: "Tech Two", email: "tech2@toktickit.local", role: "IT_STAFF", isActive: true },
